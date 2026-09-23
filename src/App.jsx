@@ -259,7 +259,7 @@ const NewsScreen = () => {
               <div style={{ display: 'flex', gap: 12 }}>
                 <div style={{ width: 60, height: 60, borderRadius: 8, background: 'rgba(255,255,255,0.1)', overflow: 'hidden', flexShrink: 0 }}>
                   {item.image_path ? (
-                    <img src={`${getApiUrl()}/${item.image_path}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    <img src={`${getActiveSiteConfig().url}/${item.image_path}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                   ) : (
                     <div style={{ width:'100%', height:'100%', display:'flex', alignItems:'center', justifyContent:'center' }}>
                       <ImageIcon color="var(--text-muted)" />
@@ -365,19 +365,31 @@ const MediaScreen = () => {
       try {
         if (original.type.startsWith('image/') && siteMeta) {
           setStepMessage('Aplicando marca de agua...');
-          toUpload = await applyImageWatermark(original, siteMeta.watermarkText, siteMeta.logoUrl);
+          try {
+            toUpload = await applyImageWatermark(original, siteMeta.watermarkText, siteMeta.logoUrl);
+          } catch (imgErr) {
+            console.warn('Error al aplicar marca de agua en imagen, subiendo original:', imgErr);
+            toUpload = original;
+          }
         } else if (original.type.startsWith('video/') && siteMeta) {
           setStepMessage('Comprimiendo vídeo 0%...');
-          toUpload = await processVideo(original, siteMeta.watermarkText, siteMeta.logoUrl, (ratio) => {
-            setStepMessage(`Comprimiendo vídeo ${Math.round(ratio * 100)}%...`);
-          });
+          try {
+            toUpload = await processVideo(original, siteMeta.watermarkText, siteMeta.logoUrl, (ratio) => {
+              setStepMessage(`Comprimiendo vídeo ${Math.round(ratio * 100)}%...`);
+            });
+          } catch (vidErr) {
+            console.warn('Error al comprimir vídeo, subiendo original:', vidErr);
+            // Si la compresión falla, no bloqueamos la subida: subimos el vídeo original
+            toUpload = original;
+          }
         }
 
         setStepMessage('Subiendo al servidor...');
         const res = await uploadMedia(id, toUpload);
         if (res.success) newItems.push(res.media);
       } catch (err) {
-        failed.push(original.name);
+        console.error('Error al subir archivo:', original.name, err);
+        failed.push(`${original.name} (${err.message || 'error de subida'})`);
       }
     }
     setStepMessage('');
@@ -386,7 +398,7 @@ const MediaScreen = () => {
     setUploading(false);
     if (fileInputRef.current) fileInputRef.current.value = '';
     if (failed.length) {
-      alert(`No se pudieron subir ${failed.length} archivo(s): ${failed.join(', ')}`);
+      alert(`No se pudieron subir ${failed.length} archivo(s):\n${failed.join('\n')}`);
     }
   };
 
@@ -437,14 +449,14 @@ const MediaScreen = () => {
                 </div>
                 
                 {item.is_video ? (
-                  <video src={`${getApiUrl()}/${item.image_path}`} controls style={{ width: '100%', height: 120, objectFit: 'cover', background: '#000' }} />
+                  <video src={`${getActiveSiteConfig().url}/${item.image_path}`} controls style={{ width: '100%', height: 120, objectFit: 'cover', background: '#000' }} />
                 ) : isPdf ? (
-                  <div onClick={() => window.open(`${getApiUrl()}/${item.image_path}`, '_blank')} style={{ cursor: 'pointer', width: '100%', height: 120, background: '#e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column' }}>
+                  <div onClick={() => window.open(`${getActiveSiteConfig().url}/${item.image_path}`, '_blank')} style={{ cursor: 'pointer', width: '100%', height: 120, background: '#e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column' }}>
                      <FileText size={32} color="#ef4444" opacity={0.8} />
                      <div style={{ fontSize: '10px', color: '#6b7280', marginTop: '8px', fontWeight: 'bold' }}>PDF (Tocar para ver)</div>
                   </div>
                 ) : (
-                  <img src={`${getApiUrl()}/${item.image_path}`} onClick={() => window.open(`${getApiUrl()}/${item.image_path}`, '_blank')} style={{ cursor: 'pointer' }} />
+                  <img src={`${getActiveSiteConfig().url}/${item.image_path}`} onClick={() => window.open(`${getActiveSiteConfig().url}/${item.image_path}`, '_blank')} style={{ cursor: 'pointer' }} />
                 )}
                 
                 <div className="media-actions">
