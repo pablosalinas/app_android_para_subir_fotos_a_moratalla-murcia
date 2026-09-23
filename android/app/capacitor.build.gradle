@@ -12,6 +12,7 @@ dependencies {
     implementation project(':capacitor-camera')
     implementation project(':capacitor-filesystem')
     implementation project(':capacitor-preferences')
+    implementation project(':capacitor-secure-storage-plugin')
 
 }
 

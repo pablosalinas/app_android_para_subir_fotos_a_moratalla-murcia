@@ -1,45 +1,90 @@
 import axios from 'axios';
 import { Preferences } from '@capacitor/preferences';
+import { SecureStoragePlugin } from 'capacitor-secure-storage-plugin';
 
-let apiURL = '';
-let basicAuth = '';
+// Definición de las webs soportadas por la app
+export const SITES = [
+    { id: 'moratalla', name: 'Moratalla', watermarkText: 'www.moratalla-murcia.com', logoUrl: null },
+    { id: 'banda', name: 'Banda de Música Moratalla', watermarkText: 'www.bandamusicamoratalla.com', logoUrl: null },
+];
+// logoUrl: pendiente de indicar la ruta del logo de cada web (se usará en la marca de agua)
+
+const STORAGE_KEY = 'siteConfigs';
+const ACTIVE_KEY = 'activeSite';
+const authKey = (siteId) => `auth_${siteId}`;
+
+// siteConfigs: { [siteId]: { url: string } } — solo la URL, no es un dato sensible.
+// Las credenciales (usuario:contraseña en base64) se guardan aparte, cifradas,
+// en el almacén seguro del sistema (Keystore en Android), nunca en texto plano.
+let siteConfigs = {};
+let siteAuth = {};
+let activeSite = null;
 
 export const initApi = async () => {
-    const { value: url } = await Preferences.get({ key: 'apiUrl' });
-    const { value: auth } = await Preferences.get({ key: 'basicAuth' });
-    
-    apiURL = url || '';
-    basicAuth = auth || '';
+    const { value: raw } = await Preferences.get({ key: STORAGE_KEY });
+    siteConfigs = raw ? JSON.parse(raw) : {};
+
+    siteAuth = {};
+    for (const site of SITES) {
+        try {
+            const { value } = await SecureStoragePlugin.get({ key: authKey(site.id) });
+            if (value) siteAuth[site.id] = value;
+        } catch (e) {
+            // No hay credenciales guardadas todavía para esta web; es normal.
+        }
+    }
+
+    const { value: active } = await Preferences.get({ key: ACTIVE_KEY });
+    activeSite = active || null;
 };
 
-export const setApiConfig = async (url) => {
-    // Ensure URL doesn't end with slash
+const persistConfigs = async () => {
+    await Preferences.set({ key: STORAGE_KEY, value: JSON.stringify(siteConfigs) });
+};
+
+export const getSiteConfig = (siteId) => ({
+    url: siteConfigs[siteId]?.url || '',
+    auth: siteAuth[siteId] || '',
+});
+
+export const setSiteUrl = async (siteId, url) => {
     const cleanUrl = url.replace(/\/$/, '');
-    await Preferences.set({ key: 'apiUrl', value: cleanUrl });
-    apiURL = cleanUrl;
+    siteConfigs[siteId] = { ...siteConfigs[siteId], url: cleanUrl };
+    await persistConfigs();
 };
 
-export const setCredentials = async (username, password) => {
+export const setSiteCredentials = async (siteId, username, password) => {
     const auth = btoa(`${username}:${password}`);
-    await Preferences.set({ key: 'basicAuth', value: auth });
-    basicAuth = auth;
+    siteAuth[siteId] = auth;
+    await SecureStoragePlugin.set({ key: authKey(siteId), value: auth });
 };
 
-export const clearCredentials = async () => {
-    await Preferences.remove({ key: 'basicAuth' });
-    basicAuth = '';
+export const clearSiteCredentials = async (siteId) => {
+    delete siteAuth[siteId];
+    try {
+        await SecureStoragePlugin.remove({ key: authKey(siteId) });
+    } catch (e) {
+        // Ya estaba vacío
+    }
 };
 
-export const getApiUrl = () => apiURL;
-export const getBasicAuth = () => basicAuth;
+export const setActiveSite = async (siteId) => {
+    activeSite = siteId;
+    await Preferences.set({ key: ACTIVE_KEY, value: siteId });
+};
+
+export const getActiveSite = () => activeSite;
+export const getActiveSiteConfig = () => getSiteConfig(activeSite);
+export const getActiveSiteMeta = () => SITES.find(s => s.id === activeSite);
 
 const request = async (action, method = 'GET', data = null, isFormData = false) => {
-    if (!apiURL) throw new Error('API URL not configured');
-    
+    const { url: apiURL, auth: basicAuth } = getActiveSiteConfig();
+    if (!apiURL) throw new Error('API URL no configurada para esta web');
+
     const headers = {
         'Authorization': `Basic ${basicAuth}`,
     };
-    
+
     if (!isFormData) {
         headers['Content-Type'] = 'application/json';
     }
@@ -63,7 +108,9 @@ const request = async (action, method = 'GET', data = null, isFormData = false) 
     }
 };
 
-export const login = async (username, password) => {
+export const login = async (siteId, username, password) => {
+    const { url: apiURL } = getSiteConfig(siteId);
+    if (!apiURL) throw new Error('Configura primero la URL de esta web');
     const auth = btoa(`${username}:${password}`);
     try {
         const response = await axios.post(`${apiURL}/api_app.php?action=login`, null, {
@@ -71,7 +118,7 @@ export const login = async (username, password) => {
                 'Authorization': `Basic ${auth}`
             }
         });
-        await setCredentials(username, password);
+        await setSiteCredentials(siteId, username, password);
         return response.data;
     } catch (error) {
         throw new Error(error.response?.data?.error || 'Login fallido');

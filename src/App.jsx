@@ -1,8 +1,27 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { HashRouter as Router, Routes, Route, useNavigate, useParams, Navigate } from 'react-router-dom';
-import { Settings, LogIn, Image as ImageIcon, Video, Trash2, ArrowLeft, Plus, RefreshCw, Eye, EyeOff, Save, Check, FileText } from 'lucide-react';
+import { Settings, LogIn, Image as ImageIcon, Video, Trash2, ArrowLeft, Plus, RefreshCw, Eye, EyeOff, Save, Check, FileText, ChevronRight, Repeat } from 'lucide-react';
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
-import { initApi, setApiConfig, login, getNews, toggleNews, getMedia, deleteMedia, uploadMedia, updateMediaCaption, getApiUrl, clearCredentials } from './api';
+import {
+  SITES,
+  initApi,
+  getSiteConfig,
+  setSiteUrl,
+  login,
+  getNews,
+  toggleNews,
+  getMedia,
+  deleteMedia,
+  uploadMedia,
+  updateMediaCaption,
+  getActiveSite,
+  getActiveSiteConfig,
+  getActiveSiteMeta,
+  setActiveSite,
+  clearSiteCredentials,
+} from './api';
+import { applyImageWatermark } from './watermark';
+import { processVideo } from './videoProcessor';
 import './index.css';
 
 const Loader = ({ message = "Cargando..." }) => (
@@ -12,21 +31,67 @@ const Loader = ({ message = "Cargando..." }) => (
   </div>
 );
 
+const SitePickerScreen = () => {
+  const navigate = useNavigate();
+  const [configs, setConfigs] = useState({});
+
+  useEffect(() => {
+    const map = {};
+    SITES.forEach(s => { map[s.id] = getSiteConfig(s.id); });
+    setConfigs(map);
+  }, []);
+
+  const handleSelect = async (siteId) => {
+    await setActiveSite(siteId);
+    const cfg = getSiteConfig(siteId);
+    if (!cfg.url) navigate(`/config/${siteId}`);
+    else if (!cfg.auth) navigate(`/login/${siteId}`);
+    else navigate('/news');
+  };
+
+  return (
+    <div className="animate-fade-in" style={{ padding: 20, paddingTop: 60 }}>
+      <div className="card text-center mb-4">
+        <h2 style={{ marginBottom: 8 }}>¿A qué web quieres subir contenido?</h2>
+        <p className="text-muted text-sm">Elige el sitio de destino</p>
+      </div>
+
+      {SITES.map(site => {
+        const cfg = configs[site.id] || {};
+        const status = !cfg.url ? 'Sin configurar' : !cfg.auth ? 'Configurada, falta iniciar sesión' : 'Lista';
+        return (
+          <div key={site.id} className="list-item" onClick={() => handleSelect(site.id)} style={{ marginBottom: 12, cursor: 'pointer' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <h4 style={{ margin: '0 0 4px' }}>{site.name}</h4>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{status}</div>
+              </div>
+              <ChevronRight color="var(--text-muted)" />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
 const ConfigScreen = () => {
+  const { siteId } = useParams();
+  const site = SITES.find(s => s.id === siteId);
   const [url, setUrl] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
-    setUrl(getApiUrl());
-  }, []);
+    setUrl(getSiteConfig(siteId).url || '');
+  }, [siteId]);
 
   const handleSave = async (e) => {
     e.preventDefault();
     setLoading(true);
-    await setApiConfig(url);
+    await setSiteUrl(siteId, url);
     setLoading(false);
-    navigate('/login');
+    navigate(`/login/${siteId}`);
   };
 
   return (
@@ -34,8 +99,8 @@ const ConfigScreen = () => {
       {loading && <Loader message="Guardando configuración..." />}
       <div className="card text-center mb-4">
         <Settings size={48} color="var(--primary)" style={{ margin: '0 auto 16px' }} />
-        <h2 style={{ marginBottom: 8 }}>Configuración Inicial</h2>
-        <p className="text-muted text-sm">Introduce la URL de tu servidor (ej. https://moratalla-murcia.com)</p>
+        <h2 style={{ marginBottom: 8 }}>Configuración — {site?.name}</h2>
+        <p className="text-muted text-sm">Introduce la URL del servidor de esta web (ej. https://{site?.watermarkText?.replace('www.', '')})</p>
       </div>
 
       <form onSubmit={handleSave}>
@@ -56,6 +121,8 @@ const ConfigScreen = () => {
 };
 
 const LoginScreen = () => {
+  const { siteId } = useParams();
+  const site = SITES.find(s => s.id === siteId);
   const [user, setUser] = useState('');
   const [pass, setPass] = useState('');
   const [loading, setLoading] = useState(false);
@@ -64,15 +131,16 @@ const LoginScreen = () => {
 
   const handleLogin = async (e) => {
     e.preventDefault();
-    if (!getApiUrl()) {
-      navigate('/config');
+    if (!getSiteConfig(siteId).url) {
+      navigate(`/config/${siteId}`);
       return;
     }
     
     setLoading(true);
     setError('');
     try {
-      await login(user, pass);
+      await login(siteId, user, pass);
+      await setActiveSite(siteId);
       navigate('/news');
     } catch (err) {
       setError(err.message);
@@ -85,12 +153,12 @@ const LoginScreen = () => {
     <div className="animate-fade-in" style={{ padding: 20, paddingTop: 60 }}>
       {loading && <Loader message="Autenticando..." />}
       <div className="card text-center mb-4">
-        <div style={{ position: 'absolute', top: 20, right: 20, cursor: 'pointer' }} onClick={() => navigate('/config')}>
+        <div style={{ position: 'absolute', top: 20, right: 20, cursor: 'pointer' }} onClick={() => navigate(`/config/${siteId}`)}>
           <Settings size={24} color="var(--text-muted)" />
         </div>
         <LogIn size={48} color="var(--primary)" style={{ margin: '0 auto 16px' }} />
-        <h2 style={{ marginBottom: 8 }}>Admin Login</h2>
-        <p className="text-muted text-sm">Inicia sesión con tu cuenta de administrador de la web.</p>
+        <h2 style={{ marginBottom: 8 }}>Admin Login — {site?.name}</h2>
+        <p className="text-muted text-sm">Inicia sesión con tu cuenta de administrador de esta web.</p>
       </div>
 
       {error && <div style={{ background: 'rgba(239, 68, 68, 0.1)', color: 'var(--danger)', padding: 16, borderRadius: 12, marginBottom: 24, textAlign: 'center' }}>{error}</div>}
@@ -157,15 +225,22 @@ const NewsScreen = () => {
   };
 
   const logout = async () => {
-    await clearCredentials();
-    navigate('/login');
+    await clearSiteCredentials(getActiveSite());
+    navigate('/');
   };
+
+  const switchSite = () => navigate('/');
+  const siteMeta = getActiveSiteMeta();
 
   return (
     <div className="animate-fade-in">
       <div className="header">
-        <div className="header-title">Noticias</div>
+        <div>
+          <div className="header-title">Noticias</div>
+          {siteMeta && <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{siteMeta.name}</div>}
+        </div>
         <div style={{ display: 'flex', gap: 12 }}>
+          <Repeat size={22} onClick={switchSite} color="var(--text-muted)" title="Cambiar web" />
           <RefreshCw size={24} onClick={loadNews} color="var(--primary)" />
           <LogIn size={24} onClick={logout} color="var(--text-muted)" style={{ transform: 'rotate(180deg)' }} />
         </div>
@@ -227,6 +302,8 @@ const MediaScreen = () => {
   const [media, setMedia] = useState([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0 });
+  const [stepMessage, setStepMessage] = useState('');
   const [editingId, setEditingId] = useState(null);
   const [editCaption, setEditCaption] = useState('');
   const fileInputRef = useRef(null);
@@ -270,26 +347,57 @@ const MediaScreen = () => {
   };
 
   const handleFileChange = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
 
-    try {
-      setUploading(true);
-      const res = await uploadMedia(id, file);
-      if (res.success) {
-        setMedia([...media, res.media]);
+    const siteMeta = getActiveSiteMeta();
+    setUploading(true);
+    setUploadProgress({ current: 0, total: files.length });
+    const failed = [];
+    const newItems = [];
+
+    // Se procesan uno a uno para no saturar el servidor y poder mostrar progreso real
+    for (let i = 0; i < files.length; i++) {
+      setUploadProgress({ current: i + 1, total: files.length });
+      const original = files[i];
+      let toUpload = original;
+
+      try {
+        if (original.type.startsWith('image/') && siteMeta) {
+          setStepMessage('Aplicando marca de agua...');
+          toUpload = await applyImageWatermark(original, siteMeta.watermarkText, siteMeta.logoUrl);
+        } else if (original.type.startsWith('video/') && siteMeta) {
+          setStepMessage('Comprimiendo vídeo 0%...');
+          toUpload = await processVideo(original, siteMeta.watermarkText, siteMeta.logoUrl, (ratio) => {
+            setStepMessage(`Comprimiendo vídeo ${Math.round(ratio * 100)}%...`);
+          });
+        }
+
+        setStepMessage('Subiendo al servidor...');
+        const res = await uploadMedia(id, toUpload);
+        if (res.success) newItems.push(res.media);
+      } catch (err) {
+        failed.push(original.name);
       }
-    } catch (err) {
-      alert("Error al subir archivo: " + err.message);
-    } finally {
-      setUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+    setStepMessage('');
+
+    if (newItems.length) setMedia(prev => [...prev, ...newItems]);
+    setUploading(false);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+    if (failed.length) {
+      alert(`No se pudieron subir ${failed.length} archivo(s): ${failed.join(', ')}`);
     }
   };
 
   return (
     <div className="animate-fade-in">
-      {uploading && <Loader message="Subiendo archivo al servidor..." />}
+      {uploading && (
+        <Loader message={
+          (uploadProgress.total > 1 ? `Archivo ${uploadProgress.current} de ${uploadProgress.total} — ` : '') +
+          (stepMessage || 'Procesando...')
+        } />
+      )}
       
       <div className="header">
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -303,7 +411,8 @@ const MediaScreen = () => {
           type="file" 
           ref={fileInputRef} 
           style={{ display: 'none' }} 
-          accept="*/*"
+          accept="image/*,video/*"
+          multiple
           onChange={handleFileChange}
         />
       </div>
@@ -386,11 +495,11 @@ const AppRoot = () => {
   return (
     <Router>
       <Routes>
-        <Route path="/config" element={<ConfigScreen />} />
-        <Route path="/login" element={<LoginScreen />} />
-        <Route path="/news" element={<NewsScreen />} />
-        <Route path="/media/:id" element={<MediaScreen />} />
-        <Route path="/" element={<Navigate to={getApiUrl() ? "/login" : "/config"} />} />
+        <Route path="/" element={<SitePickerScreen />} />
+        <Route path="/config/:siteId" element={<ConfigScreen />} />
+        <Route path="/login/:siteId" element={<LoginScreen />} />
+        <Route path="/news" element={getActiveSite() ? <NewsScreen /> : <Navigate to="/" />} />
+        <Route path="/media/:id" element={getActiveSite() ? <MediaScreen /> : <Navigate to="/" />} />
       </Routes>
     </Router>
   );
