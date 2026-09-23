@@ -4,10 +4,10 @@ import { SecureStoragePlugin } from 'capacitor-secure-storage-plugin';
 
 // Definición de las webs soportadas por la app
 export const SITES = [
-    { id: 'moratalla', name: 'Moratalla', watermarkText: 'www.moratalla-murcia.com', logoUrl: null },
+    { id: 'moratalla', name: 'Moratalla', watermarkText: 'www.moratalla-murcia.com', logoUrl: '/logos/moratalla.jpg' },
     { id: 'banda', name: 'Banda de Música Moratalla', watermarkText: 'www.bandamusicamoratalla.com', logoUrl: null },
 ];
-// logoUrl: pendiente de indicar la ruta del logo de cada web (se usará en la marca de agua)
+// logoUrl: pendiente el logo de banda música Moratalla (se usará en la marca de agua)
 
 const STORAGE_KEY = 'siteConfigs';
 const ACTIVE_KEY = 'activeSite';

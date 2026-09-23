@@ -29,6 +29,18 @@ const getFFmpeg = async () => {
 const LOGO_SIZE = 40;
 const PADDING = 16;
 
+// Devuelve el ancho en px que tendría el logo si se escala a una altura fija (LOGO_SIZE),
+// respetando su proporción real en vez de deformarlo a un cuadrado.
+const getScaledLogoWidth = (logoUrl) => new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+        const width = Math.round(LOGO_SIZE * (img.width / img.height));
+        resolve(width % 2 === 0 ? width : width + 1); // par, lo exige el códec de vídeo
+    };
+    img.onerror = reject;
+    img.src = logoUrl;
+});
+
 /**
  * Comprime un vídeo y le aplica una marca de agua (texto + logo opcional)
  * en la esquina inferior derecha.
@@ -59,13 +71,15 @@ export const processVideo = async (file, watermarkText, logoUrl = null, onProgre
         await ffmpeg.writeFile(fontName, await fetchFile(`${window.location.origin}/fonts/watermark-font.ttf`));
 
         const hasLogo = !!logoUrl;
+        let logoWidth = 0;
         if (hasLogo) {
             await ffmpeg.writeFile(logoName, await fetchFile(logoUrl));
+            logoWidth = await getScaledLogoWidth(logoUrl);
         }
 
         // Texto: caja semitransparente + texto blanco, esquina inferior derecha.
-        // Si hay logo, se deja hueco a su izquierda; si no, va pegado al borde.
-        const textRightOffset = hasLogo ? PADDING * 2 + LOGO_SIZE : PADDING;
+        // Si hay logo, se deja hueco a su izquierda (según su ancho real); si no, va pegado al borde.
+        const textRightOffset = hasLogo ? PADDING * 2 + logoWidth : PADDING;
         const drawtext = [
             `drawtext=fontfile=${fontName}`,
             `text='${watermarkText.replace(/:/g, '\\:').replace(/'/g, "\\'")}'`,
@@ -81,7 +95,7 @@ export const processVideo = async (file, watermarkText, logoUrl = null, onProgre
         // Escala a un ancho máximo de 1280px (mantiene proporción) para reducir peso,
         // limita a 30fps y comprime con CRF alto (más compresión, calidad razonable).
         const filterComplex = hasLogo
-            ? `[0:v]scale='min(1280,iw)':-2[scaled];[1:v]scale=${LOGO_SIZE}:${LOGO_SIZE}[logo];[scaled][logo]overlay=W-w-${PADDING}:H-h-${PADDING}[withlogo];[withlogo]${drawtext}[outv]`
+            ? `[0:v]scale='min(1280,iw)':-2[scaled];[1:v]scale=${logoWidth}:${LOGO_SIZE}[logo];[scaled][logo]overlay=W-w-${PADDING}:H-h-${PADDING}[withlogo];[withlogo]${drawtext}[outv]`
             : `[0:v]scale='min(1280,iw)':-2,${drawtext}[outv]`;
 
         const args = hasLogo
