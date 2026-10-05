@@ -128,11 +128,41 @@ export const getNews = () => request('news');
 export const toggleNews = (id, is_active) => request('toggle_news', 'POST', { id, is_active });
 export const getMedia = (news_id) => request(`media&news_id=${news_id}`);
 export const deleteMedia = (media_id) => request(`media&id=${media_id}`, 'DELETE');
-export const updateMediaCaption = (id, caption) => request('media', 'PUT', { id, caption });
+export const updateMediaCaption = (id, caption, author = undefined) => {
+    const payload = { id, caption };
+    if (author !== undefined) payload.author = author;
+    return request('media', 'PUT', payload);
+};
 
-export const uploadMedia = (news_id, file) => {
+export const uploadMedia = (news_id, file, author = '') => {
     const formData = new FormData();
     formData.append('news_id', news_id);
     formData.append('file', file);
+    if (author) formData.append('author', author);
     return request('media', 'POST', formData, true);
 };
+
+export const setMainImageFromFile = (news_id, file, author = '') => {
+    const formData = new FormData();
+    formData.append('news_id', news_id);
+    formData.append('file', file);
+    if (author) formData.append('author', author);
+    return request('set_main_image', 'POST', formData, true);
+};
+
+export const setMainImageFromMedia = (news_id, mediaItem, author = '') => {
+    const formData = new FormData();
+    formData.append('news_id', news_id);
+    if (mediaItem.id) formData.append('media_id', mediaItem.id);
+    if (mediaItem.image_path) formData.append('image_path', mediaItem.image_path);
+    if (author) formData.append('author', author);
+    return request('set_main_image', 'POST', formData, true);
+};
+
+export const updateNewsAuthor = (news_id, author) => {
+    const formData = new FormData();
+    formData.append('news_id', news_id);
+    formData.append('author', author);
+    return request('set_main_image', 'POST', formData, true);
+};
+

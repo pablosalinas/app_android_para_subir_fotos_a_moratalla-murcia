@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { HashRouter as Router, Routes, Route, useNavigate, useParams, Navigate } from 'react-router-dom';
-import { Settings, LogIn, Image as ImageIcon, Video, Trash2, ArrowLeft, Plus, RefreshCw, Eye, EyeOff, Save, Check, FileText, ChevronRight, Repeat } from 'lucide-react';
+import { HashRouter as Router, Routes, Route, useNavigate, useParams, Navigate, useLocation } from 'react-router-dom';
+import { Settings, LogIn, Image as ImageIcon, Video, Trash2, ArrowLeft, Plus, RefreshCw, Eye, EyeOff, Save, Check, FileText, ChevronRight, Repeat, User, Star, Edit3, X } from 'lucide-react';
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
 import {
   SITES,
@@ -14,6 +14,9 @@ import {
   deleteMedia,
   uploadMedia,
   updateMediaCaption,
+  setMainImageFromFile,
+  setMainImageFromMedia,
+  updateNewsAuthor,
   getActiveSite,
   getActiveSiteConfig,
   getActiveSiteMeta,
@@ -193,6 +196,12 @@ const LoginScreen = () => {
 const NewsScreen = () => {
   const [news, setNews] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [modalTarget, setModalTarget] = useState(null); // Noticia seleccionada para cambiar portada/autor
+  const [modalAuthor, setModalAuthor] = useState('');
+  const [modalFile, setModalFile] = useState(null);
+  const [modalPreview, setModalPreview] = useState(null);
+  const [modalSaving, setModalSaving] = useState(false);
+  const mainFileInputRef = useRef(null);
   const navigate = useNavigate();
 
   const loadNews = async () => {
@@ -224,6 +233,51 @@ const NewsScreen = () => {
     }
   };
 
+  const openMainImageModal = (item, e) => {
+    e.stopPropagation();
+    setModalTarget(item);
+    setModalAuthor(item.image_author || '');
+    setModalFile(null);
+    setModalPreview(null);
+  };
+
+  const handleMainFileSelect = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setModalFile(file);
+    const reader = new FileReader();
+    reader.onload = () => setModalPreview(reader.result);
+    reader.readAsDataURL(file);
+  };
+
+  const handleSaveMainImage = async () => {
+    if (!modalTarget) return;
+    setModalSaving(true);
+    const siteMeta = getActiveSiteMeta();
+    try {
+      let finalFile = modalFile;
+      if (modalFile) {
+        if (modalFile.type.startsWith('image/') && siteMeta) {
+          try {
+            finalFile = await applyImageWatermark(modalFile, siteMeta.watermarkText, siteMeta.logoUrl);
+          } catch (e) {
+            console.warn('Fallo marca de agua portada, usando original', e);
+          }
+        }
+        await setMainImageFromFile(modalTarget.id, finalFile, modalAuthor);
+      } else {
+        // Solo actualizar el autor de la noticia
+        await updateNewsAuthor(modalTarget.id, modalAuthor);
+      }
+      setModalTarget(null);
+      await loadNews();
+    } catch (err) {
+      alert("Error al guardar imagen principal/autor: " + (err.message || 'Error desconocido'));
+    } finally {
+      setModalSaving(false);
+    }
+  };
+
   const logout = async () => {
     await clearSiteCredentials(getActiveSite());
     navigate('/');
@@ -234,15 +288,99 @@ const NewsScreen = () => {
 
   return (
     <div className="animate-fade-in">
+      {modalSaving && <Loader message="Guardando imagen principal..." />}
+
+      {/* Modal para asignar o cambiar Imagen Principal y Autor */}
+      {modalTarget && (
+        <div className="loader-overlay" style={{ padding: 20 }}>
+          <div className="card" style={{ width: '100%', maxWidth: 440, background: 'var(--bg-card)', position: 'relative' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <h3 style={{ fontSize: '1.1rem', margin: 0 }}>Imagen principal y Autor</h3>
+              <X size={20} style={{ cursor: 'pointer', color: 'var(--text-muted)' }} onClick={() => setModalTarget(null)} />
+            </div>
+
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: 16, lineHeight: 1.4 }}>
+              <strong>Noticia:</strong> {modalTarget.title}
+            </p>
+
+            <div style={{ textAlign: 'center', marginBottom: 16 }}>
+              <div 
+                onClick={() => mainFileInputRef.current?.click()}
+                style={{ 
+                  width: '100%', 
+                  height: 160, 
+                  borderRadius: 12, 
+                  background: 'rgba(255,255,255,0.05)', 
+                  border: '2px dashed rgba(255,255,255,0.2)',
+                  display: 'flex', 
+                  flexDirection: 'column', 
+                  alignItems: 'center', 
+                  justifyContent: 'center', 
+                  cursor: 'pointer',
+                  overflow: 'hidden',
+                  position: 'relative'
+                }}
+              >
+                {modalPreview ? (
+                  <img src={modalPreview} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                ) : modalTarget.image_path ? (
+                  <img src={`${getActiveSiteConfig().url}/${modalTarget.image_path}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                ) : (
+                  <>
+                    <ImageIcon size={36} color="var(--primary)" style={{ marginBottom: 8 }} />
+                    <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Toca para seleccionar foto de portada</span>
+                  </>
+                )}
+                <div style={{ position: 'absolute', bottom: 6, right: 6, background: 'rgba(0,0,0,0.7)', borderRadius: 6, padding: '4px 8px', fontSize: '0.75rem' }}>
+                  {modalPreview || modalTarget.image_path ? 'Cambiar foto' : 'Subir foto'}
+                </div>
+              </div>
+              <input 
+                type="file" 
+                ref={mainFileInputRef} 
+                style={{ display: 'none' }} 
+                accept="image/*" 
+                onChange={handleMainFileSelect} 
+              />
+            </div>
+
+            <div style={{ marginBottom: 20 }}>
+              <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: 6 }}>
+                Autor/a de la fotografía:
+              </label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(255,255,255,0.05)', borderRadius: 10, padding: '4px 12px', border: '1px solid rgba(255,255,255,0.1)' }}>
+                <User size={16} color="var(--primary)" />
+                <input 
+                  type="text" 
+                  value={modalAuthor} 
+                  onChange={e => setModalAuthor(e.target.value)}
+                  placeholder="Ej. Juan Pérez / Banda de Música" 
+                  style={{ width: '100%', background: 'transparent', border: 'none', color: 'white', padding: '8px 0', outline: 'none', fontSize: '0.9rem' }}
+                />
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button className="btn btn-ghost" onClick={() => setModalTarget(null)} style={{ flex: 1 }}>
+                Cancelar
+              </button>
+              <button className="btn btn-primary" onClick={handleSaveMainImage} style={{ flex: 2 }}>
+                <Save size={16} /> Guardar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="header">
         <div>
           <div className="header-title">Noticias</div>
           {siteMeta && <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{siteMeta.name}</div>}
         </div>
         <div style={{ display: 'flex', gap: 12 }}>
-          <Repeat size={22} onClick={switchSite} color="var(--text-muted)" title="Cambiar web" />
-          <RefreshCw size={24} onClick={loadNews} color="var(--primary)" />
-          <LogIn size={24} onClick={logout} color="var(--text-muted)" style={{ transform: 'rotate(180deg)' }} />
+          <Repeat size={22} onClick={switchSite} color="var(--text-muted)" title="Cambiar web" style={{ cursor: 'pointer' }} />
+          <RefreshCw size={24} onClick={loadNews} color="var(--primary)" style={{ cursor: 'pointer' }} />
+          <LogIn size={24} onClick={logout} color="var(--text-muted)" style={{ transform: 'rotate(180deg)', cursor: 'pointer' }} />
         </div>
       </div>
       
@@ -252,40 +390,66 @@ const NewsScreen = () => {
         ) : (
           news.map(item => (
             <div key={item.id} className="list-item" onClick={(e) => {
-              if(e.target.tagName !== 'INPUT' && e.target.tagName !== 'SPAN') {
-                navigate(`/media/${item.id}`, { state: { newsTitle: item.title } });
+              if(e.target.tagName !== 'INPUT' && e.target.tagName !== 'SPAN' && !e.target.closest('button')) {
+                navigate(`/media/${item.id}`, { state: { newsTitle: item.title, initialAuthor: item.image_author || '' } });
               }
             }}>
               <div style={{ display: 'flex', gap: 12 }}>
-                <div style={{ width: 60, height: 60, borderRadius: 8, background: 'rgba(255,255,255,0.1)', overflow: 'hidden', flexShrink: 0 }}>
+                <div 
+                  onClick={(e) => openMainImageModal(item, e)}
+                  title="Toca para asignar o cambiar foto de portada"
+                  style={{ width: 68, height: 68, borderRadius: 10, background: 'rgba(255,255,255,0.1)', overflow: 'hidden', flexShrink: 0, position: 'relative', cursor: 'pointer', border: item.image_path ? '1px solid rgba(255,255,255,0.1)' : '2px dashed var(--primary)' }}
+                >
                   {item.image_path ? (
                     <img src={`${getActiveSiteConfig().url}/${item.image_path}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                   ) : (
-                    <div style={{ width:'100%', height:'100%', display:'flex', alignItems:'center', justifyContent:'center' }}>
-                      <ImageIcon color="var(--text-muted)" />
+                    <div style={{ width:'100%', height:'100%', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding: 4 }}>
+                      <Plus size={20} color="var(--primary)" />
+                      <span style={{ fontSize: '9px', color: 'var(--primary)', textAlign: 'center', fontWeight: 600 }}>Portada</span>
+                    </div>
+                  )}
+                  {item.image_path && (
+                    <div style={{ position: 'absolute', bottom: 2, right: 2, background: 'rgba(0,0,0,0.6)', borderRadius: 4, padding: 2 }}>
+                      <Edit3 size={11} color="white" />
                     </div>
                   )}
                 </div>
-                <div style={{ flex: 1 }}>
-                  <h4 style={{ margin: '0 0 4px', fontSize: '1rem', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{item.title}</h4>
-                  <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                    {item.event_date ? new Date(item.event_date).toLocaleDateString() : 'Sin fecha'}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <h4 style={{ margin: '0 0 4px', fontSize: '0.95rem', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{item.title}</h4>
+                  
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 12px', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                    <span>{item.event_date ? new Date(item.event_date).toLocaleDateString() : 'Sin fecha'}</span>
+                    {item.image_author && (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#38bdf8' }}>
+                        <User size={12} /> {item.image_author}
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>
               
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: 12, marginTop: 4 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: 10, marginTop: 4 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <label className="switch">
                     <input type="checkbox" checked={!!item.is_active_home} onChange={() => handleToggle(item)} />
                     <span className="slider"></span>
                   </label>
-                  <span style={{ fontSize: '0.85rem', color: item.is_active_home ? 'var(--success)' : 'var(--text-muted)' }}>
+                  <span style={{ fontSize: '0.82rem', color: item.is_active_home ? 'var(--success)' : 'var(--text-muted)' }}>
                     {item.is_active_home ? 'Visible en Web' : 'Oculta'}
                   </span>
                 </div>
-                <div className="btn btn-primary" style={{ padding: '6px 12px', fontSize: '0.85rem', width: 'auto', borderRadius: 8 }}>
-                  Ver Galería
+
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button 
+                    className="btn btn-ghost" 
+                    style={{ padding: '6px 10px', fontSize: '0.8rem', width: 'auto', borderRadius: 8, display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                    onClick={(e) => openMainImageModal(item, e)}
+                  >
+                    <Star size={13} color="var(--primary)" /> Portada
+                  </button>
+                  <div className="btn btn-primary" style={{ padding: '6px 12px', fontSize: '0.82rem', width: 'auto', borderRadius: 8 }}>
+                    Galería
+                  </div>
                 </div>
               </div>
             </div>
@@ -298,6 +462,7 @@ const NewsScreen = () => {
 
 const MediaScreen = () => {
   const { id } = useParams();
+  const location = useLocation();
   const navigate = useNavigate();
   const [media, setMedia] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -306,6 +471,8 @@ const MediaScreen = () => {
   const [stepMessage, setStepMessage] = useState('');
   const [editingId, setEditingId] = useState(null);
   const [editCaption, setEditCaption] = useState('');
+  const [editAuthor, setEditAuthor] = useState('');
+  const [defaultAuthor, setDefaultAuthor] = useState(location.state?.initialAuthor || '');
   const fileInputRef = useRef(null);
 
   const loadMedia = async () => {
@@ -332,13 +499,29 @@ const MediaScreen = () => {
     }
   };
 
-  const handleSaveCaption = async (mediaId) => {
+  const handleStartEdit = (item) => {
+    setEditingId(item.id);
+    setEditCaption(item.caption || '');
+    setEditAuthor(item.author || '');
+  };
+
+  const handleSaveDetails = async (mediaId) => {
     try {
-      await updateMediaCaption(mediaId, editCaption);
-      setMedia(media.map(m => m.id === mediaId ? { ...m, caption: editCaption } : m));
+      await updateMediaCaption(mediaId, editCaption, editAuthor);
+      setMedia(media.map(m => m.id === mediaId ? { ...m, caption: editCaption, author: editAuthor } : m));
       setEditingId(null);
     } catch (err) {
-      alert("Error al guardar descripción");
+      alert("Error al guardar detalles de la imagen");
+    }
+  };
+
+  const handleSetAsMain = async (item) => {
+    if (!window.confirm('¿Establecer esta imagen como la principal/portada de la noticia?')) return;
+    try {
+      await setMainImageFromMedia(id, item, item.author || defaultAuthor);
+      alert('¡Imagen establecida como principal de la noticia con éxito!');
+    } catch (err) {
+      alert('Error al establecer como principal: ' + (err.message || 'Error desconocido'));
     }
   };
 
@@ -379,13 +562,12 @@ const MediaScreen = () => {
             });
           } catch (vidErr) {
             console.warn('Error al comprimir vídeo, subiendo original:', vidErr);
-            // Si la compresión falla, no bloqueamos la subida: subimos el vídeo original
             toUpload = original;
           }
         }
 
         setStepMessage('Subiendo al servidor...');
-        const res = await uploadMedia(id, toUpload);
+        const res = await uploadMedia(id, toUpload, defaultAuthor);
         if (res.success) newItems.push(res.media);
       } catch (err) {
         console.error('Error al subir archivo:', original.name, err);
@@ -414,10 +596,17 @@ const MediaScreen = () => {
       <div className="header">
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <ArrowLeft size={24} onClick={() => navigate('/news')} style={{ cursor: 'pointer' }} />
-          <div className="header-title">Galería</div>
+          <div>
+            <div className="header-title">Galería</div>
+            {location.state?.newsTitle && (
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', maxWidth: 200, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {location.state.newsTitle}
+              </div>
+            )}
+          </div>
         </div>
-        <div className="btn btn-primary" style={{ width: 'auto', padding: '6px 12px', borderRadius: 20 }} onClick={handleUploadClick}>
-          <Plus size={18} /> Añadir
+        <div className="btn btn-primary" style={{ width: 'auto', padding: '6px 14px', borderRadius: 20 }} onClick={handleUploadClick}>
+          <Plus size={18} /> Subir
         </div>
         <input 
           type="file" 
@@ -430,6 +619,18 @@ const MediaScreen = () => {
       </div>
 
       <div style={{ padding: 16 }}>
+        {/* Barra para definir autor de las fotos a subir */}
+        <div className="card" style={{ padding: '10px 14px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <User size={18} color="var(--primary)" />
+          <input 
+            type="text" 
+            value={defaultAuthor} 
+            onChange={e => setDefaultAuthor(e.target.value)}
+            placeholder="Autor para las fotos que subas (opcional)"
+            style={{ width: '100%', background: 'transparent', border: 'none', color: 'white', fontSize: '0.85rem', outline: 'none' }}
+          />
+        </div>
+
         {loading && !media.length ? (
           <div style={{ textAlign: 'center', marginTop: 40, color: 'var(--text-muted)' }}>Cargando galería...</div>
         ) : media.length === 0 ? (
@@ -461,29 +662,56 @@ const MediaScreen = () => {
                 
                 <div className="media-actions">
                   {editingId === item.id ? (
-                    <div style={{ display: 'flex', gap: 4 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                       <input 
                         type="text" 
                         value={editCaption} 
                         onChange={e => setEditCaption(e.target.value)} 
-                        style={{ width: '100%', padding: 4, fontSize: '0.75rem', borderRadius: 4, border: 'none', background: 'white', color: 'black' }}
+                        placeholder="Descripción..."
+                        style={{ width: '100%', padding: '4px 6px', fontSize: '0.75rem', borderRadius: 4, border: 'none', background: 'white', color: 'black' }}
                         autoFocus
                       />
-                      <div onClick={() => handleSaveCaption(item.id)} style={{ background: 'var(--success)', padding: 4, borderRadius: 4, display: 'flex', alignItems: 'center' }}>
-                        <Check size={14} color="white" />
+                      <div style={{ display: 'flex', gap: 4 }}>
+                        <input 
+                          type="text" 
+                          value={editAuthor} 
+                          onChange={e => setEditAuthor(e.target.value)} 
+                          placeholder="Autor de la foto..."
+                          style={{ width: '100%', padding: '4px 6px', fontSize: '0.75rem', borderRadius: 4, border: 'none', background: 'white', color: 'black' }}
+                        />
+                        <button onClick={() => handleSaveDetails(item.id)} style={{ background: 'var(--success)', border: 'none', padding: '4px 8px', borderRadius: 4, display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
+                          <Check size={14} color="white" />
+                        </button>
                       </div>
                     </div>
                   ) : (
                     <div 
-                      style={{ fontSize: '0.75rem', color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', background: 'rgba(255,255,255,0.05)', padding: '4px 8px', borderRadius: 4 }}
-                      onClick={() => { setEditingId(item.id); setEditCaption(item.caption || ''); }}
+                      style={{ cursor: 'pointer', background: 'rgba(255,255,255,0.05)', padding: '5px 8px', borderRadius: 6 }}
+                      onClick={() => handleStartEdit(item)}
                     >
-                      {item.caption || 'Sin descripción (Tocar)'}
+                      <div style={{ fontSize: '0.75rem', color: item.caption ? 'white' : 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {item.caption || 'Sin descripción'}
+                      </div>
+                      <div style={{ fontSize: '0.7rem', color: item.author ? '#38bdf8' : 'rgba(255,255,255,0.4)', marginTop: 2, display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <User size={10} /> {item.author || 'Sin autor (Tocar)'}
+                      </div>
                     </div>
                   )}
                   
-                  <div className="btn btn-danger" style={{ padding: '6px', fontSize: '0.8rem', borderRadius: 6 }} onClick={() => handleDelete(item.id)}>
-                    <Trash2 size={14} /> Borrar
+                  <div style={{ display: 'flex', gap: 4 }}>
+                    {!item.is_video && !isPdf && (
+                      <button 
+                        className="btn btn-ghost" 
+                        style={{ padding: '5px', fontSize: '0.72rem', borderRadius: 6, flex: 1, border: '1px solid rgba(255,255,255,0.1)' }} 
+                        onClick={() => handleSetAsMain(item)}
+                        title="Asignar como portada de la noticia"
+                      >
+                        <Star size={12} color="var(--primary)" /> Portada
+                      </button>
+                    )}
+                    <button className="btn btn-danger" style={{ padding: '5px', fontSize: '0.72rem', borderRadius: 6, width: item.is_video || isPdf ? '100%' : 'auto' }} onClick={() => handleDelete(item.id)}>
+                      <Trash2 size={13} />
+                    </button>
                   </div>
                 </div>
               </div>
