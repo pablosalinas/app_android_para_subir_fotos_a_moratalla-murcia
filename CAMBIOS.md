@@ -28,6 +28,8 @@
 - **Credenciales cifradas**: usuario y contraseña de cada web ya no se
   guardan en texto plano; van al almacén seguro del sistema (Keystore de
   Android) vía `capacitor-secure-storage-plugin`.
+- **Gestión de Páginas (exclusivo Moratalla)**: selector de pestañas en la pantalla principal para alternar entre "Noticias y Eventos" y "Páginas". Permite ver las páginas registradas, filtrarlas por búsqueda en tiempo real, alternar su visibilidad y acceder a su galería para subir fotos y vídeos.
+- **Asignación ágil en lote (Autor y Descripción)**: tanto en Noticias como en Páginas (y en ambas webs: Moratalla y Banda de Música), al seleccionar archivos para subir se abre una ventana previa que permite definir el Autor y la Descripción común de una sola vez, aplicándose automáticamente a todas las fotos y vídeos seleccionados sin tener que ir uno a uno. Sigue siendo posible dejarlos en blanco y editarlos individualmente.
 
 ## Pendiente de tu parte
 

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { HashRouter as Router, Routes, Route, useNavigate, useParams, Navigate, useLocation } from 'react-router-dom';
-import { Settings, LogIn, Image as ImageIcon, Video, Trash2, ArrowLeft, Plus, RefreshCw, Eye, EyeOff, Save, Check, FileText, ChevronRight, Repeat, User, Star, Edit3, X } from 'lucide-react';
+import { Settings, LogIn, Image as ImageIcon, Video, Trash2, ArrowLeft, Plus, RefreshCw, Eye, EyeOff, Save, Check, FileText, ChevronRight, Repeat, User, Star, Edit3, X, Search, UploadCloud } from 'lucide-react';
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
 import {
   SITES,
@@ -14,6 +14,12 @@ import {
   deleteMedia,
   uploadMedia,
   updateMediaCaption,
+  getPages,
+  togglePage,
+  getPageMedia,
+  deletePageMedia,
+  updatePageMediaCaption,
+  uploadPageMedia,
   setMainImageFromFile,
   setMainImageFromMedia,
   updateNewsAuthor,
@@ -203,6 +209,13 @@ const NewsScreen = () => {
   const [modalSaving, setModalSaving] = useState(false);
   const mainFileInputRef = useRef(null);
   const navigate = useNavigate();
+  const location = useLocation();
+  const siteMeta = getActiveSiteMeta();
+  const isMoratalla = siteMeta?.id === 'moratalla';
+  const [currentTab, setCurrentTab] = useState(location.state?.tab || 'news');
+  const [pages, setPages] = useState([]);
+  const [loadingPages, setLoadingPages] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
 
   const loadNews = async () => {
     setLoading(true);
@@ -220,7 +233,30 @@ const NewsScreen = () => {
     }
   };
 
+  const loadPages = async () => {
+    if (!isMoratalla) return;
+    setLoadingPages(true);
+    try {
+      const res = await getPages();
+      if (res.success) setPages(res.pages || []);
+    } catch (err) {
+      if (err.message.includes('401') || err.message.includes('Credenciales')) {
+        navigate('/login');
+      } else {
+        alert(err.message);
+      }
+    } finally {
+      setLoadingPages(false);
+    }
+  };
+
   useEffect(() => { loadNews(); }, []);
+
+  useEffect(() => {
+    if (isMoratalla && currentTab === 'pages') {
+      loadPages();
+    }
+  }, [currentTab, isMoratalla]);
 
   const handleToggle = async (item) => {
     const newVal = item.is_active_home ? 0 : 1;
@@ -232,6 +268,23 @@ const NewsScreen = () => {
       loadNews(); // revert
     }
   };
+
+  const handleTogglePage = async (page) => {
+    const newVal = page.is_visible ? 0 : 1;
+    setPages(pages.map(p => p.id === page.id ? { ...p, is_visible: newVal } : p));
+    try {
+      await togglePage(page.id, newVal);
+    } catch (err) {
+      alert("Error al cambiar visibilidad de la página");
+      loadPages();
+    }
+  };
+
+  const filteredPages = pages.filter(p => {
+    if (!searchTerm) return true;
+    const term = searchTerm.toLowerCase();
+    return (p.title || '').toLowerCase().includes(term) || (p.category_name || '').toLowerCase().includes(term);
+  });
 
   const openMainImageModal = (item, e) => {
     e.stopPropagation();
@@ -284,7 +337,6 @@ const NewsScreen = () => {
   };
 
   const switchSite = () => navigate('/');
-  const siteMeta = getActiveSiteMeta();
 
   return (
     <div className="animate-fade-in">
@@ -374,88 +426,200 @@ const NewsScreen = () => {
 
       <div className="header">
         <div>
-          <div className="header-title">Noticias</div>
+          <div className="header-title">{isMoratalla && currentTab === 'pages' ? 'Páginas' : 'Noticias'}</div>
           {siteMeta && <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{siteMeta.name}</div>}
         </div>
         <div style={{ display: 'flex', gap: 12 }}>
           <Repeat size={22} onClick={switchSite} color="var(--text-muted)" title="Cambiar web" style={{ cursor: 'pointer' }} />
-          <RefreshCw size={24} onClick={loadNews} color="var(--primary)" style={{ cursor: 'pointer' }} />
+          <RefreshCw size={24} onClick={isMoratalla && currentTab === 'pages' ? loadPages : loadNews} color="var(--primary)" style={{ cursor: 'pointer' }} />
           <LogIn size={24} onClick={logout} color="var(--text-muted)" style={{ transform: 'rotate(180deg)', cursor: 'pointer' }} />
         </div>
       </div>
+
+      {isMoratalla && (
+        <div className="tabs-container">
+          <button 
+            type="button"
+            className={`tab-btn ${currentTab === 'news' ? 'active' : ''}`}
+            onClick={() => setCurrentTab('news')}
+          >
+            <ImageIcon size={15} /> Noticias y Eventos
+          </button>
+          <button 
+            type="button"
+            className={`tab-btn ${currentTab === 'pages' ? 'active' : ''}`}
+            onClick={() => setCurrentTab('pages')}
+          >
+            <FileText size={15} /> Páginas
+          </button>
+        </div>
+      )}
       
-      <div style={{ padding: 16 }}>
-        {loading && !news.length ? (
-          <div style={{ textAlign: 'center', marginTop: 40, color: 'var(--text-muted)' }}>Cargando noticias...</div>
-        ) : (
-          news.map(item => (
-            <div key={item.id} className="list-item" onClick={(e) => {
-              if(e.target.tagName !== 'INPUT' && e.target.tagName !== 'SPAN' && !e.target.closest('button')) {
-                navigate(`/media/${item.id}`, { state: { newsTitle: item.title, initialAuthor: item.image_author || '' } });
-              }
-            }}>
-              <div style={{ display: 'flex', gap: 12 }}>
+      {isMoratalla && currentTab === 'pages' ? (
+        <div style={{ padding: '0 0 16px' }}>
+          <div className="search-box">
+            <Search size={18} color="var(--text-muted)" />
+            <input 
+              type="text" 
+              placeholder="Buscar página por título o categoría..." 
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+            />
+            {searchTerm && (
+              <X size={16} color="var(--text-muted)" style={{ cursor: 'pointer' }} onClick={() => setSearchTerm('')} />
+            )}
+          </div>
+
+          <div style={{ padding: '0 16px' }}>
+            {loadingPages && !pages.length ? (
+              <div style={{ textAlign: 'center', marginTop: 40, color: 'var(--text-muted)' }}>Cargando páginas...</div>
+            ) : filteredPages.length === 0 ? (
+              <div style={{ textAlign: 'center', marginTop: 40, color: 'var(--text-muted)' }}>
+                {searchTerm ? 'No se encontraron páginas con ese término.' : 'No hay páginas registradas.'}
+              </div>
+            ) : (
+              filteredPages.map(page => (
                 <div 
-                  onClick={(e) => openMainImageModal(item, e)}
-                  title="Toca para asignar o cambiar foto de portada"
-                  style={{ width: 68, height: 68, borderRadius: 10, background: 'rgba(255,255,255,0.1)', overflow: 'hidden', flexShrink: 0, position: 'relative', cursor: 'pointer', border: item.image_path ? '1px solid rgba(255,255,255,0.1)' : '2px dashed var(--primary)' }}
+                  key={page.id} 
+                  className="list-item" 
+                  onClick={(e) => {
+                    if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'SPAN' && !e.target.closest('button')) {
+                      navigate(`/page-media/${page.id}`, { state: { pageTitle: page.title, isPage: true } });
+                    }
+                  }}
+                  style={{ cursor: 'pointer' }}
                 >
-                  {item.image_path ? (
-                    <img src={`${getActiveSiteConfig().url}/${item.image_path}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                  ) : (
-                    <div style={{ width:'100%', height:'100%', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding: 4 }}>
-                      <Plus size={20} color="var(--primary)" />
-                      <span style={{ fontSize: '9px', color: 'var(--primary)', textAlign: 'center', fontWeight: 600 }}>Portada</span>
+                  <div style={{ display: 'flex', gap: 12 }}>
+                    <div 
+                      style={{ 
+                        width: 68, 
+                        height: 68, 
+                        borderRadius: 10, 
+                        background: 'rgba(255,255,255,0.06)', 
+                        overflow: 'hidden', 
+                        flexShrink: 0, 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        justifyContent: 'center',
+                        border: '1px solid rgba(255,255,255,0.08)' 
+                      }}
+                    >
+                      {page.cover_image ? (
+                        <img src={`${getActiveSiteConfig().url}/${page.cover_image}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      ) : (
+                        <FileText size={26} color="var(--primary)" opacity={0.6} />
+                      )}
                     </div>
-                  )}
-                  {item.image_path && (
-                    <div style={{ position: 'absolute', bottom: 2, right: 2, background: 'rgba(0,0,0,0.6)', borderRadius: 4, padding: 2 }}>
-                      <Edit3 size={11} color="white" />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <h4 style={{ margin: '0 0 4px', fontSize: '0.95rem', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                        {page.title}
+                      </h4>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', fontSize: '0.78rem' }}>
+                        <span className="badge" style={{ background: 'rgba(14, 165, 233, 0.12)', color: '#38bdf8' }}>
+                          {page.category_name || 'General'}
+                        </span>
+                      </div>
                     </div>
-                  )}
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <h4 style={{ margin: '0 0 4px', fontSize: '0.95rem', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{item.title}</h4>
-                  
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 12px', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                    <span>{item.event_date ? new Date(item.event_date).toLocaleDateString() : 'Sin fecha'}</span>
-                    {item.image_author && (
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#38bdf8' }}>
-                        <User size={12} /> {item.image_author}
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: 10, marginTop: 4 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <label className="switch">
+                        <input type="checkbox" checked={!!page.is_visible} onChange={() => handleTogglePage(page)} />
+                        <span className="slider"></span>
+                      </label>
+                      <span style={{ fontSize: '0.82rem', color: page.is_visible ? 'var(--success)' : 'var(--text-muted)' }}>
+                        {page.is_visible ? 'Visible en Web' : 'Oculta'}
                       </span>
+                    </div>
+
+                    <button 
+                      className="btn btn-primary" 
+                      style={{ padding: '6px 14px', fontSize: '0.82rem', width: 'auto', borderRadius: 8 }}
+                      onClick={() => navigate(`/page-media/${page.id}`, { state: { pageTitle: page.title, isPage: true } })}
+                    >
+                      Galería
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      ) : (
+        <div style={{ padding: 16 }}>
+          {loading && !news.length ? (
+            <div style={{ textAlign: 'center', marginTop: 40, color: 'var(--text-muted)' }}>Cargando noticias...</div>
+          ) : (
+            news.map(item => (
+              <div key={item.id} className="list-item" onClick={(e) => {
+                if(e.target.tagName !== 'INPUT' && e.target.tagName !== 'SPAN' && !e.target.closest('button')) {
+                  navigate(`/media/${item.id}`, { state: { newsTitle: item.title, initialAuthor: item.image_author || '' } });
+                }
+              }}>
+                <div style={{ display: 'flex', gap: 12 }}>
+                  <div 
+                    onClick={(e) => openMainImageModal(item, e)}
+                    title="Toca para asignar o cambiar foto de portada"
+                    style={{ width: 68, height: 68, borderRadius: 10, background: 'rgba(255,255,255,0.1)', overflow: 'hidden', flexShrink: 0, position: 'relative', cursor: 'pointer', border: item.image_path ? '1px solid rgba(255,255,255,0.1)' : '2px dashed var(--primary)' }}
+                  >
+                    {item.image_path ? (
+                      <img src={`${getActiveSiteConfig().url}/${item.image_path}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    ) : (
+                      <div style={{ width:'100%', height:'100%', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding: 4 }}>
+                        <Plus size={20} color="var(--primary)" />
+                        <span style={{ fontSize: '9px', color: 'var(--primary)', textAlign: 'center', fontWeight: 600 }}>Portada</span>
+                      </div>
+                    )}
+                    {item.image_path && (
+                      <div style={{ position: 'absolute', bottom: 2, right: 2, background: 'rgba(0,0,0,0.6)', borderRadius: 4, padding: 2 }}>
+                        <Edit3 size={11} color="white" />
+                      </div>
                     )}
                   </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <h4 style={{ margin: '0 0 4px', fontSize: '0.95rem', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{item.title}</h4>
+                    
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 12px', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                      <span>{item.event_date ? new Date(item.event_date).toLocaleDateString() : 'Sin fecha'}</span>
+                      {item.image_author && (
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#38bdf8' }}>
+                          <User size={12} /> {item.image_author}
+                        </span>
+                      )}
+                    </div>
+                  </div>
                 </div>
-              </div>
-              
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: 10, marginTop: 4 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <label className="switch">
-                    <input type="checkbox" checked={!!item.is_active_home} onChange={() => handleToggle(item)} />
-                    <span className="slider"></span>
-                  </label>
-                  <span style={{ fontSize: '0.82rem', color: item.is_active_home ? 'var(--success)' : 'var(--text-muted)' }}>
-                    {item.is_active_home ? 'Visible en Web' : 'Oculta'}
-                  </span>
-                </div>
+                
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: 10, marginTop: 4 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <label className="switch">
+                      <input type="checkbox" checked={!!item.is_active_home} onChange={() => handleToggle(item)} />
+                      <span className="slider"></span>
+                    </label>
+                    <span style={{ fontSize: '0.82rem', color: item.is_active_home ? 'var(--success)' : 'var(--text-muted)' }}>
+                      {item.is_active_home ? 'Visible en Web' : 'Oculta'}
+                    </span>
+                  </div>
 
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <button 
-                    className="btn btn-ghost" 
-                    style={{ padding: '6px 10px', fontSize: '0.8rem', width: 'auto', borderRadius: 8, display: 'inline-flex', alignItems: 'center', gap: 4 }}
-                    onClick={(e) => openMainImageModal(item, e)}
-                  >
-                    <Star size={13} color="var(--primary)" /> Portada
-                  </button>
-                  <div className="btn btn-primary" style={{ padding: '6px 12px', fontSize: '0.82rem', width: 'auto', borderRadius: 8 }}>
-                    Galería
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button 
+                      className="btn btn-ghost" 
+                      style={{ padding: '6px 10px', fontSize: '0.8rem', width: 'auto', borderRadius: 8, display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                      onClick={(e) => openMainImageModal(item, e)}
+                    >
+                      <Star size={13} color="var(--primary)" /> Portada
+                    </button>
+                    <div className="btn btn-primary" style={{ padding: '6px 12px', fontSize: '0.82rem', width: 'auto', borderRadius: 8 }}>
+                      Galería
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          ))
-        )}
-      </div>
+            ))
+          )}
+        </div>
+      )}
     </div>
   );
 };
@@ -464,6 +628,9 @@ const MediaScreen = () => {
   const { id } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
+  const isPage = location.pathname.startsWith('/page-media') || !!location.state?.isPage;
+  const targetTitle = isPage ? (location.state?.pageTitle || 'Página') : (location.state?.newsTitle || 'Noticia');
+
   const [media, setMedia] = useState([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -473,12 +640,18 @@ const MediaScreen = () => {
   const [editCaption, setEditCaption] = useState('');
   const [editAuthor, setEditAuthor] = useState('');
   const [defaultAuthor, setDefaultAuthor] = useState(location.state?.initialAuthor || '');
+  
+  // Estado para el modal de asignación común previa a la subida
+  const [pendingFiles, setPendingFiles] = useState([]);
+  const [showBatchModal, setShowBatchModal] = useState(false);
+  const [batchAuthor, setBatchAuthor] = useState('');
+  const [batchCaption, setBatchCaption] = useState('');
   const fileInputRef = useRef(null);
 
   const loadMedia = async () => {
     setLoading(true);
     try {
-      const res = await getMedia(id);
+      const res = isPage ? await getPageMedia(id) : await getMedia(id);
       if (res.success) setMedia(res.media);
     } catch (err) {
       alert(err.message);
@@ -487,12 +660,16 @@ const MediaScreen = () => {
     }
   };
 
-  useEffect(() => { loadMedia(); }, [id]);
+  useEffect(() => { loadMedia(); }, [id, isPage]);
 
   const handleDelete = async (mediaId) => {
     if (!window.confirm('¿Seguro que deseas eliminar este archivo?')) return;
     try {
-      await deleteMedia(mediaId);
+      if (isPage) {
+        await deletePageMedia(mediaId);
+      } else {
+        await deleteMedia(mediaId);
+      }
       setMedia(media.filter(m => m.id !== mediaId));
     } catch (err) {
       alert("Error al borrar");
@@ -507,7 +684,11 @@ const MediaScreen = () => {
 
   const handleSaveDetails = async (mediaId) => {
     try {
-      await updateMediaCaption(mediaId, editCaption, editAuthor);
+      if (isPage) {
+        await updatePageMediaCaption(mediaId, editCaption, editAuthor);
+      } else {
+        await updateMediaCaption(mediaId, editCaption, editAuthor);
+      }
       setMedia(media.map(m => m.id === mediaId ? { ...m, caption: editCaption, author: editAuthor } : m));
       setEditingId(null);
     } catch (err) {
@@ -529,9 +710,26 @@ const MediaScreen = () => {
     fileInputRef.current?.click();
   };
 
-  const handleFileChange = async (e) => {
+  const handleFileChange = (e) => {
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
+    setPendingFiles(files);
+    setBatchAuthor(defaultAuthor || '');
+    setBatchCaption('');
+    setShowBatchModal(true);
+  };
+
+  const handleCancelBatchModal = () => {
+    setShowBatchModal(false);
+    setPendingFiles([]);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const handleConfirmBatchUpload = async () => {
+    const files = [...pendingFiles];
+    setShowBatchModal(false);
+    setPendingFiles([]);
+    if (fileInputRef.current) fileInputRef.current.value = '';
 
     const siteMeta = getActiveSiteMeta();
     setUploading(true);
@@ -539,7 +737,9 @@ const MediaScreen = () => {
     const failed = [];
     const newItems = [];
 
-    // Se procesan uno a uno para no saturar el servidor y poder mostrar progreso real
+    if (batchAuthor) setDefaultAuthor(batchAuthor);
+
+    // Se procesan uno a uno para no saturar el dispositivo ni el servidor
     for (let i = 0; i < files.length; i++) {
       setUploadProgress({ current: i + 1, total: files.length });
       const original = files[i];
@@ -567,8 +767,27 @@ const MediaScreen = () => {
         }
 
         setStepMessage('Subiendo al servidor...');
-        const res = await uploadMedia(id, toUpload, defaultAuthor);
-        if (res.success) newItems.push(res.media);
+        const res = isPage
+          ? await uploadPageMedia(id, toUpload, batchAuthor, batchCaption)
+          : await uploadMedia(id, toUpload, batchAuthor, batchCaption);
+
+        if (res.success && res.media) {
+          let item = res.media;
+          // Si el servidor devolvió el ítem sin el pie de foto asignado, asegurar persistencia
+          if (batchCaption && (!item.caption || item.caption !== batchCaption)) {
+            try {
+              if (isPage) {
+                await updatePageMediaCaption(item.id, batchCaption, batchAuthor);
+              } else {
+                await updateMediaCaption(item.id, batchCaption, batchAuthor);
+              }
+              item = { ...item, caption: batchCaption, author: batchAuthor || item.author };
+            } catch (capErr) {
+              console.warn('Actualización de respaldo de pie de foto:', capErr);
+            }
+          }
+          newItems.push(item);
+        }
       } catch (err) {
         console.error('Error al subir archivo:', original.name, err);
         failed.push(`${original.name} (${err.message || 'error de subida'})`);
@@ -578,7 +797,6 @@ const MediaScreen = () => {
 
     if (newItems.length) setMedia(prev => [...prev, ...newItems]);
     setUploading(false);
-    if (fileInputRef.current) fileInputRef.current.value = '';
     if (failed.length) {
       alert(`No se pudieron subir ${failed.length} archivo(s):\n${failed.join('\n')}`);
     }
@@ -592,15 +810,79 @@ const MediaScreen = () => {
           (stepMessage || 'Procesando...')
         } />
       )}
+
+      {/* Modal para agilizar la asignación común de Autor y Descripción antes de la subida */}
+      {showBatchModal && (
+        <div className="loader-overlay" style={{ padding: 20 }}>
+          <div className="card animate-fade-in" style={{ width: '100%', maxWidth: 440, background: 'var(--bg-card)', position: 'relative' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <h3 style={{ fontSize: '1.05rem', margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <UploadCloud size={20} color="var(--primary)" />
+                Subir {pendingFiles.length} {pendingFiles.length === 1 ? 'archivo' : 'archivos'}
+              </h3>
+              <X size={20} style={{ cursor: 'pointer', color: 'var(--text-muted)' }} onClick={handleCancelBatchModal} />
+            </div>
+
+            <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: 16, lineHeight: 1.4 }}>
+              Asigna autor y descripción para {pendingFiles.length === 1 ? 'este archivo' : 'todos los archivos seleccionados'}. Si son iguales, se rellenarán automáticamente en cada uno para no ir uno a uno.
+            </p>
+
+            <div style={{ marginBottom: 14 }}>
+              <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: 6 }}>
+                Autor/a de las fotografías / vídeos:
+              </label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(255,255,255,0.05)', borderRadius: 10, padding: '4px 12px', border: '1px solid rgba(255,255,255,0.1)' }}>
+                <User size={16} color="var(--primary)" />
+                <input 
+                  type="text" 
+                  value={batchAuthor} 
+                  onChange={e => setBatchAuthor(e.target.value)}
+                  placeholder="Ej. Juan Pérez / Banda de Música" 
+                  style={{ width: '100%', background: 'transparent', border: 'none', color: 'white', padding: '8px 0', outline: 'none', fontSize: '0.88rem' }}
+                />
+              </div>
+            </div>
+
+            <div style={{ marginBottom: 20 }}>
+              <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: 6 }}>
+                Descripción / Pie de foto común:
+              </label>
+              <textarea 
+                value={batchCaption} 
+                onChange={e => setBatchCaption(e.target.value)}
+                placeholder="Ej. Procesión del Santo Entierro, Concierto de Primavera..." 
+                rows={3}
+                style={{ width: '100%', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, color: 'white', padding: '10px 12px', outline: 'none', fontSize: '0.88rem', resize: 'none', boxSizing: 'border-box' }}
+              />
+              <div style={{ fontSize: '0.74rem', color: 'rgba(255,255,255,0.4)', marginTop: 4 }}>
+                * Puedes dejarlo en blanco si prefieres editarlos después individualmente.
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button className="btn btn-ghost" onClick={handleCancelBatchModal} style={{ flex: 1 }}>
+                Cancelar
+              </button>
+              <button className="btn btn-primary" onClick={handleConfirmBatchUpload} style={{ flex: 2 }}>
+                Subir {pendingFiles.length} {pendingFiles.length === 1 ? 'archivo' : 'archivos'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       
       <div className="header">
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <ArrowLeft size={24} onClick={() => navigate('/news')} style={{ cursor: 'pointer' }} />
+          <ArrowLeft 
+            size={24} 
+            onClick={() => navigate('/news', { state: { tab: isPage ? 'pages' : 'news' } })} 
+            style={{ cursor: 'pointer' }} 
+          />
           <div>
-            <div className="header-title">Galería</div>
-            {location.state?.newsTitle && (
+            <div className="header-title">Galería {isPage ? 'de Página' : ''}</div>
+            {targetTitle && (
               <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', maxWidth: 200, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {location.state.newsTitle}
+                {targetTitle}
               </div>
             )}
           </div>
@@ -619,14 +901,14 @@ const MediaScreen = () => {
       </div>
 
       <div style={{ padding: 16 }}>
-        {/* Barra para definir autor de las fotos a subir */}
+        {/* Barra para definir autor preferente para las próximas subidas */}
         <div className="card" style={{ padding: '10px 14px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 10 }}>
           <User size={18} color="var(--primary)" />
           <input 
             type="text" 
             value={defaultAuthor} 
             onChange={e => setDefaultAuthor(e.target.value)}
-            placeholder="Autor para las fotos que subas (opcional)"
+            placeholder="Autor por defecto para las fotos que subas (opcional)"
             style={{ width: '100%', background: 'transparent', border: 'none', color: 'white', fontSize: '0.85rem', outline: 'none' }}
           />
         </div>
@@ -636,7 +918,7 @@ const MediaScreen = () => {
         ) : media.length === 0 ? (
           <div className="card text-center" style={{ marginTop: 20 }}>
             <ImageIcon size={48} color="var(--text-muted)" style={{ margin: '0 auto 16px', opacity: 0.5 }} />
-            <p style={{ color: 'var(--text-muted)' }}>No hay imágenes ni vídeos en esta noticia.</p>
+            <p style={{ color: 'var(--text-muted)' }}>No hay imágenes ni vídeos en {isPage ? 'esta página' : 'esta noticia'}.</p>
             <button className="btn btn-primary mt-4" onClick={handleUploadClick}>Subir el primero</button>
           </div>
         ) : (
@@ -699,7 +981,7 @@ const MediaScreen = () => {
                   )}
                   
                   <div style={{ display: 'flex', gap: 4 }}>
-                    {!item.is_video && !isPdf && (
+                    {!item.is_video && !isPdf && !isPage && (
                       <button 
                         className="btn btn-ghost" 
                         style={{ padding: '5px', fontSize: '0.72rem', borderRadius: 6, flex: 1, border: '1px solid rgba(255,255,255,0.1)' }} 
@@ -709,7 +991,7 @@ const MediaScreen = () => {
                         <Star size={12} color="var(--primary)" /> Portada
                       </button>
                     )}
-                    <button className="btn btn-danger" style={{ padding: '5px', fontSize: '0.72rem', borderRadius: 6, width: item.is_video || isPdf ? '100%' : 'auto' }} onClick={() => handleDelete(item.id)}>
+                    <button className="btn btn-danger" style={{ padding: '5px', fontSize: '0.72rem', borderRadius: 6, width: item.is_video || isPdf || isPage ? '100%' : 'auto' }} onClick={() => handleDelete(item.id)}>
                       <Trash2 size={13} />
                     </button>
                   </div>
@@ -740,6 +1022,7 @@ const AppRoot = () => {
         <Route path="/login/:siteId" element={<LoginScreen />} />
         <Route path="/news" element={getActiveSite() ? <NewsScreen /> : <Navigate to="/" />} />
         <Route path="/media/:id" element={getActiveSite() ? <MediaScreen /> : <Navigate to="/" />} />
+        <Route path="/page-media/:id" element={getActiveSite() ? <MediaScreen /> : <Navigate to="/" />} />
       </Routes>
     </Router>
   );

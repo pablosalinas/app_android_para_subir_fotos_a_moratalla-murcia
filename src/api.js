@@ -134,12 +134,32 @@ export const updateMediaCaption = (id, caption, author = undefined) => {
     return request('media', 'PUT', payload);
 };
 
-export const uploadMedia = (news_id, file, author = '') => {
+export const uploadMedia = (news_id, file, author = '', caption = '') => {
     const formData = new FormData();
     formData.append('news_id', news_id);
     formData.append('file', file);
     if (author) formData.append('author', author);
+    if (caption) formData.append('caption', caption);
     return request('media', 'POST', formData, true);
+};
+
+// Páginas (exclusivo Moratalla)
+export const getPages = () => request('pages');
+export const togglePage = (id, is_visible) => request('toggle_page', 'POST', { id, is_visible });
+export const getPageMedia = (page_id) => request(`page_media&page_id=${page_id}`);
+export const deletePageMedia = (media_id) => request(`page_media&id=${media_id}`, 'DELETE');
+export const updatePageMediaCaption = (id, caption, author = undefined) => {
+    const payload = { id, caption };
+    if (author !== undefined) payload.author = author;
+    return request('page_media', 'PUT', payload);
+};
+export const uploadPageMedia = (page_id, file, author = '', caption = '') => {
+    const formData = new FormData();
+    formData.append('page_id', page_id);
+    formData.append('file', file);
+    if (author) formData.append('author', author);
+    if (caption) formData.append('caption', caption);
+    return request('page_media', 'POST', formData, true);
 };
 
 export const setMainImageFromFile = (news_id, file, author = '') => {
