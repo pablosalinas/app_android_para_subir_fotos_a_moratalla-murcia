@@ -30,7 +30,7 @@ import {
   clearSiteCredentials,
 } from './api';
 import { applyImageWatermark } from './watermark';
-import { processVideo } from './videoProcessor';
+import { processVideo, terminateFFmpeg } from './videoProcessor';
 import './index.css';
 
 const Loader = ({ message = "Cargando..." }) => (
@@ -39,6 +39,158 @@ const Loader = ({ message = "Cargando..." }) => (
     <div style={{ fontWeight: 600 }}>{message}</div>
   </div>
 );
+
+const formatTime = (totalSeconds) => {
+  if (!totalSeconds || isNaN(totalSeconds) || totalSeconds <= 0) return '00:00';
+  const m = Math.floor(totalSeconds / 60);
+  const s = Math.floor(totalSeconds % 60);
+  return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+};
+
+const UploadProgressModal = ({ uploadState, onSkipCompression }) => {
+  const {
+    fileIndex,
+    totalFiles,
+    fileName,
+    isVideo,
+    phase,
+    compression,
+    upload,
+    elapsedSeconds,
+  } = uploadState;
+
+  const isCompressing = phase === 'compressing';
+  const isUploading = phase === 'uploading';
+
+  return (
+    <div className="upload-progress-overlay">
+      <div className="upload-progress-card animate-fade-in">
+        {/* Encabezado */}
+        <div className="upload-progress-header">
+          <div className="upload-progress-icon-wrap">
+            {isVideo ? <Video size={24} color="#38bdf8" /> : <UploadCloud size={24} color="#38bdf8" />}
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+              <h3 style={{ fontSize: '1rem', fontWeight: 700, margin: 0, color: '#f8fafc' }}>
+                {isVideo ? 'Procesando Vídeo' : 'Subiendo Archivo'}
+              </h3>
+              <div className="upload-timer-badge">
+                ⏱️ {formatTime(elapsedSeconds)}
+              </div>
+            </div>
+            <div style={{ fontSize: '0.78rem', color: '#94a3b8', marginTop: 4, display: 'flex', gap: 6, alignItems: 'center' }}>
+              <span className="upload-file-badge">
+                {totalFiles > 1 ? `Archivo ${fileIndex} de ${totalFiles}` : '1 archivo'}
+              </span>
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 170 }}>
+                {fileName}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Paso 1: Compactación y marca de agua del vídeo */}
+        {isVideo && (
+          <div className={`upload-step-box ${isCompressing ? 'active' : (compression.percent === 100 || isUploading) ? 'completed' : ''}`}>
+            <div className="upload-step-header">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span className={`upload-step-num ${(isUploading || compression.percent === 100) ? 'done' : isCompressing ? 'active' : ''}`}>
+                  {(isUploading || compression.percent === 100) ? <Check size={12} strokeWidth={3} /> : '1'}
+                </span>
+                <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#f1f5f9' }}>
+                  Compactación y marca de agua
+                </span>
+              </div>
+              <span style={{ fontSize: '0.85rem', fontWeight: 700, color: isCompressing ? '#38bdf8' : '#94a3b8' }}>
+                {compression.percent}%
+              </span>
+            </div>
+
+            {/* Barra de progreso */}
+            <div className="progress-bar-track">
+              <div 
+                className="progress-bar-fill" 
+                style={{ width: `${Math.min(100, Math.max(0, compression.percent))}%` }}
+              />
+            </div>
+
+            {/* Contador de duración y velocidad */}
+            <div className="upload-step-footer">
+              <span>
+                {compression.totalSec > 0 ? (
+                  `Duración: ${formatTime(compression.currentSec)} / ${formatTime(compression.totalSec)}`
+                ) : (
+                  compression.message || 'Optimizando vídeo...'
+                )}
+              </span>
+              {compression.speed ? <span>Velocidad: {compression.speed}</span> : null}
+            </div>
+
+            {/* Botón para saltar compactación en móviles lentos */}
+            {isCompressing && compression.canSkip && (
+              <div style={{ marginTop: 12, textAlign: 'center' }}>
+                <button 
+                  type="button"
+                  className="btn btn-ghost" 
+                  onClick={onSkipCompression}
+                  style={{ 
+                    padding: '8px 14px', 
+                    fontSize: '0.8rem', 
+                    borderRadius: 10, 
+                    border: '1px dashed rgba(56, 189, 248, 0.4)',
+                    color: '#e2e8f0',
+                    background: 'rgba(56, 189, 248, 0.06)',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6
+                  }}
+                >
+                  ⚡ Saltar compactación y subir original
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Paso 2: Subida al servidor */}
+        <div className={`upload-step-box ${isUploading ? 'active' : ''}`}>
+          <div className="upload-step-header">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span className={`upload-step-num ${upload.percent === 100 ? 'done' : isUploading ? 'active' : ''}`}>
+                {upload.percent === 100 ? <Check size={12} strokeWidth={3} /> : (isVideo ? '2' : '1')}
+              </span>
+              <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#f1f5f9' }}>
+                Subida al servidor
+              </span>
+            </div>
+            <span style={{ fontSize: '0.85rem', fontWeight: 700, color: isUploading ? '#10b981' : '#94a3b8' }}>
+              {upload.percent}%
+            </span>
+          </div>
+
+          {/* Barra de progreso de subida */}
+          <div className="progress-bar-track">
+            <div 
+              className="progress-bar-fill progress-bar-fill-upload" 
+              style={{ width: `${Math.min(100, Math.max(0, upload.percent))}%` }}
+            />
+          </div>
+
+          {/* Contador de MBs */}
+          <div className="upload-step-footer">
+            <span>
+              {upload.loadedMB && upload.totalMB ? `${upload.loadedMB} MB de ${upload.totalMB} MB` : (isUploading ? 'Transfiriendo...' : 'En espera')}
+            </span>
+            <span>
+              {isUploading ? 'Transfiriendo datos...' : upload.percent === 100 ? 'Subido con éxito' : 'Pendiente'}
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const SitePickerScreen = () => {
   const navigate = useNavigate();
@@ -633,9 +785,6 @@ const MediaScreen = () => {
 
   const [media, setMedia] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [uploading, setUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0 });
-  const [stepMessage, setStepMessage] = useState('');
   const [editingId, setEditingId] = useState(null);
   const [editCaption, setEditCaption] = useState('');
   const [editAuthor, setEditAuthor] = useState('');
@@ -647,6 +796,57 @@ const MediaScreen = () => {
   const [batchAuthor, setBatchAuthor] = useState('');
   const [batchCaption, setBatchCaption] = useState('');
   const fileInputRef = useRef(null);
+
+  // Estado del proceso de compactación y subida
+  const [uploadState, setUploadState] = useState({
+    active: false,
+    fileIndex: 0,
+    totalFiles: 0,
+    fileName: '',
+    isVideo: false,
+    phase: 'preparing', // 'preparing' | 'compressing' | 'uploading'
+    compression: {
+      percent: 0,
+      currentSec: 0,
+      totalSec: 0,
+      speed: '',
+      fps: 0,
+      canSkip: false,
+      message: ''
+    },
+    upload: {
+      percent: 0,
+      loadedMB: '',
+      totalMB: ''
+    },
+    elapsedSeconds: 0
+  });
+
+  const abortControllerRef = useRef(null);
+  const skipCompressionRef = useRef(false);
+
+  // Contador de tiempo transcurrido en vivo
+  useEffect(() => {
+    let interval = null;
+    if (uploadState.active) {
+      interval = setInterval(() => {
+        setUploadState(prev => prev.active ? { ...prev, elapsedSeconds: prev.elapsedSeconds + 1 } : prev);
+      }, 1000);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [uploadState.active]);
+
+  const handleSkipCompression = () => {
+    skipCompressionRef.current = true;
+    if (abortControllerRef.current) {
+      try {
+        abortControllerRef.current.abort();
+      } catch (e) {}
+    }
+    terminateFFmpeg();
+  };
 
   const loadMedia = async () => {
     setLoading(true);
@@ -732,8 +932,18 @@ const MediaScreen = () => {
     if (fileInputRef.current) fileInputRef.current.value = '';
 
     const siteMeta = getActiveSiteMeta();
-    setUploading(true);
-    setUploadProgress({ current: 0, total: files.length });
+    setUploadState({
+      active: true,
+      fileIndex: 1,
+      totalFiles: files.length,
+      fileName: files[0]?.name || '',
+      isVideo: files[0]?.type?.startsWith('video/') || false,
+      phase: 'preparing',
+      compression: { percent: 0, currentSec: 0, totalSec: 0, speed: '', fps: 0, canSkip: false, message: '' },
+      upload: { percent: 0, loadedMB: '', totalMB: '' },
+      elapsedSeconds: 0
+    });
+
     const failed = [];
     const newItems = [];
 
@@ -741,39 +951,115 @@ const MediaScreen = () => {
 
     // Se procesan uno a uno para no saturar el dispositivo ni el servidor
     for (let i = 0; i < files.length; i++) {
-      setUploadProgress({ current: i + 1, total: files.length });
       const original = files[i];
+      const isVideo = original.type.startsWith('video/');
       let toUpload = original;
+      skipCompressionRef.current = false;
+
+      setUploadState(prev => ({
+        ...prev,
+        fileIndex: i + 1,
+        totalFiles: files.length,
+        fileName: original.name,
+        isVideo,
+        phase: isVideo ? 'compressing' : 'preparing',
+        compression: {
+          percent: 0,
+          currentSec: 0,
+          totalSec: 0,
+          speed: '',
+          fps: 0,
+          canSkip: isVideo,
+          message: isVideo ? 'Preparando vídeo...' : ''
+        },
+        upload: {
+          percent: 0,
+          loadedMB: '',
+          totalMB: (original.size / (1024 * 1024)).toFixed(1)
+        }
+      }));
 
       try {
         if (original.type.startsWith('image/') && siteMeta) {
-          setStepMessage('Aplicando marca de agua...');
           try {
             toUpload = await applyImageWatermark(original, siteMeta.watermarkText, siteMeta.logoUrl);
           } catch (imgErr) {
             console.warn('Error al aplicar marca de agua en imagen, subiendo original:', imgErr);
             toUpload = original;
           }
-        } else if (original.type.startsWith('video/') && siteMeta) {
-          setStepMessage('Comprimiendo vídeo 0%...');
+        } else if (isVideo && siteMeta) {
+          const abortController = new AbortController();
+          abortControllerRef.current = abortController;
+
           try {
-            toUpload = await processVideo(original, siteMeta.watermarkText, siteMeta.logoUrl, (ratio) => {
-              setStepMessage(`Comprimiendo vídeo ${Math.round(ratio * 100)}%...`);
-            });
+            toUpload = await processVideo(
+              original,
+              siteMeta.watermarkText,
+              siteMeta.logoUrl,
+              (info) => {
+                setUploadState(prev => ({
+                  ...prev,
+                  phase: 'compressing',
+                  compression: {
+                    percent: info.percent || 0,
+                    currentSec: info.currentSec || 0,
+                    totalSec: info.totalSec || 0,
+                    speed: info.speed || '',
+                    fps: info.fps || 0,
+                    canSkip: true,
+                    message: info.message || ''
+                  }
+                }));
+              },
+              abortController.signal
+            );
           } catch (vidErr) {
-            console.warn('Error al comprimir vídeo, subiendo original:', vidErr);
-            toUpload = original;
+            if (skipCompressionRef.current || abortController.signal.aborted) {
+              console.log('Compactación saltada a petición del usuario. Subiendo archivo original.');
+              toUpload = original;
+            } else {
+              console.warn('Error al compactar vídeo, subiendo original:', vidErr);
+              toUpload = original;
+            }
+          } finally {
+            abortControllerRef.current = null;
           }
         }
 
-        setStepMessage('Subiendo al servidor...');
+        // Subida al servidor
+        const uploadSizeMB = (toUpload.size / (1024 * 1024)).toFixed(1);
+        setUploadState(prev => ({
+          ...prev,
+          phase: 'uploading',
+          compression: {
+            ...prev.compression,
+            percent: 100,
+            canSkip: false
+          },
+          upload: {
+            percent: 0,
+            loadedMB: '0.0',
+            totalMB: uploadSizeMB
+          }
+        }));
+
+        const onProgressCallback = (up) => {
+          setUploadState(prev => ({
+            ...prev,
+            upload: {
+              percent: up.percent,
+              loadedMB: up.loadedMB,
+              totalMB: up.totalMB
+            }
+          }));
+        };
+
         const res = isPage
-          ? await uploadPageMedia(id, toUpload, batchAuthor, batchCaption)
-          : await uploadMedia(id, toUpload, batchAuthor, batchCaption);
+          ? await uploadPageMedia(id, toUpload, batchAuthor, batchCaption, onProgressCallback)
+          : await uploadMedia(id, toUpload, batchAuthor, batchCaption, onProgressCallback);
 
         if (res.success && res.media) {
           let item = res.media;
-          // Si el servidor devolvió el ítem sin el pie de foto asignado, asegurar persistencia
           if (batchCaption && (!item.caption || item.caption !== batchCaption)) {
             try {
               if (isPage) {
@@ -793,10 +1079,10 @@ const MediaScreen = () => {
         failed.push(`${original.name} (${err.message || 'error de subida'})`);
       }
     }
-    setStepMessage('');
+
+    setUploadState(prev => ({ ...prev, active: false }));
 
     if (newItems.length) setMedia(prev => [...prev, ...newItems]);
-    setUploading(false);
     if (failed.length) {
       alert(`No se pudieron subir ${failed.length} archivo(s):\n${failed.join('\n')}`);
     }
@@ -804,11 +1090,11 @@ const MediaScreen = () => {
 
   return (
     <div className="animate-fade-in">
-      {uploading && (
-        <Loader message={
-          (uploadProgress.total > 1 ? `Archivo ${uploadProgress.current} de ${uploadProgress.total} — ` : '') +
-          (stepMessage || 'Procesando...')
-        } />
+      {uploadState.active && (
+        <UploadProgressModal 
+          uploadState={uploadState} 
+          onSkipCompression={handleSkipCompression} 
+        />
       )}
 
       {/* Modal para agilizar la asignación común de Autor y Descripción antes de la subida */}

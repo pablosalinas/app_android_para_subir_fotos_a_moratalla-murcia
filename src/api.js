@@ -76,7 +76,7 @@ export const getActiveSite = () => activeSite;
 export const getActiveSiteConfig = () => getSiteConfig(activeSite);
 export const getActiveSiteMeta = () => SITES.find(s => s.id === activeSite);
 
-const request = async (action, method = 'GET', data = null, isFormData = false) => {
+const request = async (action, method = 'GET', data = null, isFormData = false, onUploadProgress = null) => {
     const { url: apiURL, auth: basicAuth } = getActiveSiteConfig();
     if (!apiURL) throw new Error('API URL no configurada para esta web');
 
@@ -96,6 +96,10 @@ const request = async (action, method = 'GET', data = null, isFormData = false) 
 
     if (data) {
         config.data = data;
+    }
+
+    if (onUploadProgress) {
+        config.onUploadProgress = onUploadProgress;
     }
 
     try {
@@ -134,13 +138,20 @@ export const updateMediaCaption = (id, caption, author = undefined) => {
     return request('media', 'PUT', payload);
 };
 
-export const uploadMedia = (news_id, file, author = '', caption = '') => {
+export const uploadMedia = (news_id, file, author = '', caption = '', onProgress = null) => {
     const formData = new FormData();
     formData.append('news_id', news_id);
     formData.append('file', file);
     if (author) formData.append('author', author);
     if (caption) formData.append('caption', caption);
-    return request('media', 'POST', formData, true);
+    return request('media', 'POST', formData, true, onProgress ? (e) => {
+        if (e.total) {
+            const percent = Math.min(100, Math.round((e.loaded * 100) / e.total));
+            const loadedMB = (e.loaded / (1024 * 1024)).toFixed(1);
+            const totalMB = (e.total / (1024 * 1024)).toFixed(1);
+            onProgress({ percent, loadedMB, totalMB, loadedBytes: e.loaded, totalBytes: e.total });
+        }
+    } : null);
 };
 
 // Páginas (exclusivo Moratalla)
@@ -153,13 +164,20 @@ export const updatePageMediaCaption = (id, caption, author = undefined) => {
     if (author !== undefined) payload.author = author;
     return request('page_media', 'PUT', payload);
 };
-export const uploadPageMedia = (page_id, file, author = '', caption = '') => {
+export const uploadPageMedia = (page_id, file, author = '', caption = '', onProgress = null) => {
     const formData = new FormData();
     formData.append('page_id', page_id);
     formData.append('file', file);
     if (author) formData.append('author', author);
     if (caption) formData.append('caption', caption);
-    return request('page_media', 'POST', formData, true);
+    return request('page_media', 'POST', formData, true, onProgress ? (e) => {
+        if (e.total) {
+            const percent = Math.min(100, Math.round((e.loaded * 100) / e.total));
+            const loadedMB = (e.loaded / (1024 * 1024)).toFixed(1);
+            const totalMB = (e.total / (1024 * 1024)).toFixed(1);
+            onProgress({ percent, loadedMB, totalMB, loadedBytes: e.loaded, totalBytes: e.total });
+        }
+    } : null);
 };
 
 export const setMainImageFromFile = (news_id, file, author = '') => {
