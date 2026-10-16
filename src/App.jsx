@@ -31,6 +31,7 @@ import {
 } from './api';
 import { applyImageWatermark } from './watermark';
 import { processVideo, terminateFFmpeg } from './videoProcessor';
+import { APP_VERSION, APP_BUILD, APP_DATE } from './version';
 import './index.css';
 
 const Loader = ({ message = "Cargando..." }) => (
@@ -72,8 +73,9 @@ const UploadProgressModal = ({ uploadState, onSkipCompression }) => {
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-              <h3 style={{ fontSize: '1rem', fontWeight: 700, margin: 0, color: '#f8fafc' }}>
+              <h3 style={{ fontSize: '1rem', fontWeight: 700, margin: 0, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: 8 }}>
                 {isVideo ? 'Procesando Vídeo' : 'Subiendo Archivo'}
+                <span className="badge-version" style={{ fontSize: '0.65rem', padding: '1px 6px' }}>v{APP_VERSION}</span>
               </h3>
               <div className="upload-timer-badge">
                 ⏱️ {formatTime(elapsedSeconds)}
@@ -232,6 +234,20 @@ const SitePickerScreen = () => {
           </div>
         );
       })}
+
+      {/* Tarjeta de versión y actualizaciones */}
+      <div className="version-card">
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+          <span className="version-dot"></span>
+          <span style={{ fontSize: '0.88rem', fontWeight: 700, color: '#f8fafc' }}>
+            Versión {APP_VERSION}
+          </span>
+          <span className="badge-version">Build {APP_BUILD}</span>
+        </div>
+        <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>
+          Actualizada: {APP_DATE} · Motor con barra de evolución de vídeo y subida
+        </div>
+      </div>
     </div>
   );
 };
@@ -578,7 +594,10 @@ const NewsScreen = () => {
 
       <div className="header">
         <div>
-          <div className="header-title">{isMoratalla && currentTab === 'pages' ? 'Páginas' : 'Noticias'}</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div className="header-title">{isMoratalla && currentTab === 'pages' ? 'Páginas' : 'Noticias'}</div>
+            <span className="badge-version">v{APP_VERSION}</span>
+          </div>
           {siteMeta && <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{siteMeta.name}</div>}
         </div>
         <div style={{ display: 'flex', gap: 12 }}>
@@ -1165,7 +1184,10 @@ const MediaScreen = () => {
             style={{ cursor: 'pointer' }} 
           />
           <div>
-            <div className="header-title">Galería {isPage ? 'de Página' : ''}</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div className="header-title">Galería {isPage ? 'de Página' : ''}</div>
+              <span className="badge-version">v{APP_VERSION}</span>
+            </div>
             {targetTitle && (
               <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', maxWidth: 200, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {targetTitle}
