@@ -32,11 +32,11 @@ body {
 /* Animations */
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
+  to { opacity: 1; transform: none; }
 }
 
 .animate-fade-in {
-  animation: fadeIn 0.4s ease-out forwards;
+  animation: fadeIn 0.4s ease-out;
 }
 
 /* UI Elements */
@@ -201,7 +201,12 @@ input:checked + .slider:before { transform: translateX(22px); }
 /* Fullscreen Loader Overlay */
 .loader-overlay {
   position: fixed;
-  inset: 0;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  height: 100%;
   background: rgba(10, 15, 29, 0.94);
   display: flex;
   align-items: center;
@@ -209,6 +214,7 @@ input:checked + .slider:before { transform: translateX(22px); }
   z-index: 1000;
   flex-direction: column;
   gap: 16px;
+  overflow-y: auto;
 }
 
 .spinner {
@@ -311,13 +317,19 @@ input:checked + .slider:before { transform: translateX(22px); }
 /* Upload Progress Modal & Counters */
 .upload-progress-overlay {
   position: fixed;
-  inset: 0;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  height: 100%;
   background: rgba(10, 15, 29, 0.95);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1050;
+  z-index: 2000;
   padding: 20px;
+  overflow-y: auto;
 }
 
 .badge-version {
@@ -354,12 +366,13 @@ input:checked + .slider:before { transform: translateX(22px); }
 
 .upload-progress-card {
   width: 100%;
-  maxWidth: 440px;
+  max-width: 440px;
   background: var(--bg-card);
   border-radius: 18px;
   padding: 22px;
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
   border: 1px solid rgba(255, 255, 255, 0.08);
+  margin: auto;
 }
 
 .upload-progress-header {

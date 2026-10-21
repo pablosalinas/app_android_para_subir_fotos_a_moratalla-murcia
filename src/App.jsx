@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { HashRouter as Router, Routes, Route, useNavigate, useParams, Navigate, useLocation } from 'react-router-dom';
 import { Settings, LogIn, Image as ImageIcon, Video, Trash2, ArrowLeft, Plus, RefreshCw, Eye, EyeOff, Save, Check, FileText, ChevronRight, Repeat, User, Star, Edit3, X, Search, UploadCloud } from 'lucide-react';
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
@@ -34,11 +35,12 @@ import { processVideo, terminateFFmpeg } from './videoProcessor';
 import { APP_VERSION, APP_BUILD, APP_DATE } from './version';
 import './index.css';
 
-const Loader = ({ message = "Cargando..." }) => (
+const Loader = ({ message = "Cargando..." }) => createPortal(
   <div className="loader-overlay">
     <div className="spinner"></div>
     <div style={{ fontWeight: 600 }}>{message}</div>
-  </div>
+  </div>,
+  document.body
 );
 
 const formatTime = (totalSeconds) => {
@@ -63,7 +65,7 @@ const UploadProgressModal = ({ uploadState, onSkipCompression }) => {
   const isCompressing = phase === 'compressing';
   const isUploading = phase === 'uploading';
 
-  return (
+  return createPortal(
     <div className="upload-progress-overlay">
       <div className="upload-progress-card animate-fade-in">
         {/* Encabezado */}
@@ -190,7 +192,8 @@ const UploadProgressModal = ({ uploadState, onSkipCompression }) => {
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 
@@ -506,14 +509,25 @@ const NewsScreen = () => {
 
   const switchSite = () => navigate('/');
 
+  useEffect(() => {
+    if (modalTarget || modalSaving) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [modalTarget, modalSaving]);
+
   return (
     <div className="animate-fade-in">
       {modalSaving && <Loader message="Guardando imagen principal..." />}
 
       {/* Modal para asignar o cambiar Imagen Principal y Autor */}
-      {modalTarget && (
+      {modalTarget && createPortal(
         <div className="loader-overlay" style={{ padding: 20 }}>
-          <div className="card" style={{ width: '100%', maxWidth: 440, background: 'var(--bg-card)', position: 'relative' }}>
+          <div className="card" style={{ width: '100%', maxWidth: 440, background: 'var(--bg-card)', position: 'relative', margin: 'auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
               <h3 style={{ fontSize: '1.1rem', margin: 0 }}>Imagen principal y Autor</h3>
               <X size={20} style={{ cursor: 'pointer', color: 'var(--text-muted)' }} onClick={() => setModalTarget(null)} />
@@ -589,7 +603,8 @@ const NewsScreen = () => {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       <div className="header">
@@ -1107,6 +1122,17 @@ const MediaScreen = () => {
     }
   };
 
+  useEffect(() => {
+    if (uploadState.active || showBatchModal) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [uploadState.active, showBatchModal]);
+
   return (
     <div className="animate-fade-in">
       {uploadState.active && (
@@ -1117,9 +1143,9 @@ const MediaScreen = () => {
       )}
 
       {/* Modal para agilizar la asignación común de Autor y Descripción antes de la subida */}
-      {showBatchModal && (
+      {showBatchModal && createPortal(
         <div className="loader-overlay" style={{ padding: 20 }}>
-          <div className="card animate-fade-in" style={{ width: '100%', maxWidth: 440, background: 'var(--bg-card)', position: 'relative' }}>
+          <div className="card animate-fade-in" style={{ width: '100%', maxWidth: 440, background: 'var(--bg-card)', position: 'relative', margin: 'auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
               <h3 style={{ fontSize: '1.05rem', margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
                 <UploadCloud size={20} color="var(--primary)" />
@@ -1173,7 +1199,8 @@ const MediaScreen = () => {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
       
       <div className="header">
