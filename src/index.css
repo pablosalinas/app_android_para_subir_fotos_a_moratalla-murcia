@@ -211,9 +211,28 @@ input:checked + .slider:before { transform: translateX(22px); }
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
+  z-index: 2000;
   flex-direction: column;
   gap: 16px;
+  padding: 80px 20px 30px;
+}
+
+/* Modal & Upload Progress Overlays (anchored below mobile notification bar) */
+.modal-overlay,
+.upload-progress-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(10, 15, 29, 0.95);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  z-index: 2000;
+  padding: 105px 16px 40px;
   overflow-y: auto;
 }
 
@@ -315,23 +334,6 @@ input:checked + .slider:before { transform: translateX(22px); }
 }
 
 /* Upload Progress Modal & Counters */
-.upload-progress-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(10, 15, 29, 0.95);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 2000;
-  padding: 20px;
-  overflow-y: auto;
-}
-
 .badge-version {
   display: inline-flex;
   align-items: center;
@@ -369,10 +371,10 @@ input:checked + .slider:before { transform: translateX(22px); }
   max-width: 440px;
   background: var(--bg-card);
   border-radius: 18px;
-  padding: 22px;
+  padding: 20px;
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  margin: auto;
+  margin: 0 auto;
 }
 
 .upload-progress-header {

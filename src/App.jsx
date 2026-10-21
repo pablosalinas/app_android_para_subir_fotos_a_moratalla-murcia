@@ -526,8 +526,8 @@ const NewsScreen = () => {
 
       {/* Modal para asignar o cambiar Imagen Principal y Autor */}
       {modalTarget && createPortal(
-        <div className="loader-overlay" style={{ padding: 20 }}>
-          <div className="card" style={{ width: '100%', maxWidth: 440, background: 'var(--bg-card)', position: 'relative', margin: 'auto' }}>
+        <div className="modal-overlay">
+          <div className="card animate-fade-in" style={{ width: '100%', maxWidth: 440, background: 'var(--bg-card)', position: 'relative', margin: '0 auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
               <h3 style={{ fontSize: '1.1rem', margin: 0 }}>Imagen principal y Autor</h3>
               <X size={20} style={{ cursor: 'pointer', color: 'var(--text-muted)' }} onClick={() => setModalTarget(null)} />
@@ -1144,8 +1144,8 @@ const MediaScreen = () => {
 
       {/* Modal para agilizar la asignación común de Autor y Descripción antes de la subida */}
       {showBatchModal && createPortal(
-        <div className="loader-overlay" style={{ padding: 20 }}>
-          <div className="card animate-fade-in" style={{ width: '100%', maxWidth: 440, background: 'var(--bg-card)', position: 'relative', margin: 'auto' }}>
+        <div className="modal-overlay">
+          <div className="card animate-fade-in" style={{ width: '100%', maxWidth: 440, background: 'var(--bg-card)', position: 'relative', margin: '0 auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
               <h3 style={{ fontSize: '1.05rem', margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
                 <UploadCloud size={20} color="var(--primary)" />
